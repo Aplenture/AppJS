@@ -22,6 +22,7 @@ export abstract class App {
         });
     }
 
+    public abstract close();
     public abstract execute(command?: string, args?: {}): Promise<CoreJS.Response>;
     public abstract executeLine(commandLine: string): Promise<CoreJS.Response>;
 }

@@ -33,6 +33,8 @@ export class ModularApp extends App {
         this.commander.onMessage.on(message => this.onMessage.emit(this, message));
     }
 
+    public close() { }
+
     public execute(command?: string, args?: {}): Promise<CoreJS.Response> {
         return this.commander.execute(command, args);
     }

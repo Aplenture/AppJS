@@ -26,6 +26,10 @@ export class ChildApp extends App {
         });
     }
 
+    public close() {
+        this.childProcess.disconnect();
+    }
+
     public execute(command?: string, args?: {}): Promise<CoreJS.Response> {
         const params = CoreJS.parseArgsToString(args);
 
