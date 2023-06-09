@@ -47,8 +47,12 @@ export class ModularApp extends App {
         if (config.description)
             result += '\n' + config.description + '\n';
 
-        result += '\nCommands:\n';
-        result += commander.help();
+        if (commander.count) {
+            result += '\nCommands:\n';
+            result += commander.help();
+        } else {
+            result += '\nHas no executable commands!\n';
+        }
 
         return result;
     }
