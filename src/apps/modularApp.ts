@@ -15,7 +15,7 @@ export class ModularApp extends App {
     public readonly name: string;
     public readonly infos: string;
 
-    private readonly commander = new CoreJS.Commander<CoreJS.Response>({
+    private readonly commander = new CoreJS.Commander({
         fallback: async () => new CoreJS.TextResponse(this.infos)
     });
 
@@ -34,14 +34,14 @@ export class ModularApp extends App {
     }
 
     public execute(command?: string, args?: {}): Promise<CoreJS.Response> {
-        return this.commander.execute(command, args) as any;
+        return this.commander.execute(command, args);
     }
 
     public executeLine(commandLine: string): Promise<CoreJS.Response> {
-        return this.commander.executeLine(commandLine) as any;
+        return this.commander.executeLine(commandLine);
     }
 
-    private static createInfos(config: ModularAppConfig, commander: CoreJS.Commander<any>): string {
+    private static createInfos(config: ModularAppConfig, commander: CoreJS.Commander): string {
         let result = `${config.name} v${config.version} by ${config.author}\n`;
 
         if (config.description)
