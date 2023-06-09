@@ -50,8 +50,6 @@ export class ModularApp extends App {
         if (commander.count) {
             result += '\nCommands:\n';
             result += commander.help();
-        } else {
-            result += '\nHas no executable commands!\n';
         }
 
         return result;
