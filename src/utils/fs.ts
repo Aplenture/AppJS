@@ -16,3 +16,7 @@ export function loadModule<T>(config: LoadModuleConfig, ...args: any[]): T {
 
     return new constructor(...args);
 }
+
+export function loadConfig<T>(name = 'config.json'): T {
+    return require(`${process.env.PWD}/${name}`);
+}
