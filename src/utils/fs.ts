@@ -4,7 +4,7 @@ export interface LoadModuleConfig {
 }
 
 export function loadModule<T>(config: LoadModuleConfig, ...args: any[]): T {
-    const path = `${process.env.PWD}/${config.path}.js`;
+    const path = `${process.cwd()}/${config.path}.js`;
 
     let constructor: new (...args: any[]) => T;
 
@@ -18,5 +18,5 @@ export function loadModule<T>(config: LoadModuleConfig, ...args: any[]): T {
 }
 
 export function loadConfig<T>(name = 'config.json'): T {
-    return require(`${process.env.PWD}/${name}`);
+    return require(`${process.cwd()}/${name}`);
 }
