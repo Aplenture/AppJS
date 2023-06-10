@@ -85,6 +85,18 @@ export class App {
         this.allowedOrigins = responseHeaders[CoreJS.ResponseHeader.AllowOrigin]
             ? (responseHeaders[CoreJS.ResponseHeader.AllowOrigin] as string).split(',')
             : ['*'];
+
+        this.privateCommander.add({
+            name: 'start',
+            description: "starts the server",
+            action: async () => this.start() && "server started"
+        });
+
+        this.privateCommander.add({
+            name: 'stop',
+            description: "stops the server",
+            action: async () => this.stop() as any || "server stopped"
+        });
     }
 
     public get name(): string { return this.config.name; }
