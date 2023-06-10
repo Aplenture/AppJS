@@ -62,7 +62,9 @@ export class App {
         this.responseHeaders = responseHeaders;
         this.allowedRequestHeaders = config.allowedRequestHeaders || [];
         this.infos = App.createInfos(config, this.publicCommander);
-        this.publicCommander.onMessage.on(message => this.onMessage.emit(this, message));
+
+        this.publicCommander.onMessage.on(message => this.onMessage.emit(this, 'public: ' + message));
+        this.privateCommander.onMessage.on(message => this.onMessage.emit(this, 'private: ' + message));
 
         this.config = Object.assign({
             name: infos.name,
