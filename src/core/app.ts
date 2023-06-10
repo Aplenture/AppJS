@@ -26,17 +26,21 @@ export class App {
     public readonly onError = new CoreJS.Event<App, Error>('App.onError');
 
     public readonly config: Config;
-    public readonly infos: string;
+    public readonly textInfos: string;
+    public readonly jsonInfos: string;
 
     private readonly responseHeaders: NodeJS.ReadOnlyDict<HTTP.OutgoingHttpHeader>;
     private readonly allowedRequestHeaders: readonly string[];
     private readonly allowedOrigins: readonly string[];
 
+    private readonly jsonInfoResponse: CoreJS.Response;
+    private readonly textInfoResponse: CoreJS.Response;
+
     private stopAction: () => void = null;
 
     private readonly privateCommander = new Commander();
     private readonly publicCommander = new CoreJS.Commander({
-        fallback: async () => new CoreJS.TextResponse(this.infos)
+        fallback: async args => args.json ? this.jsonInfoResponse : this.textInfoResponse
     });
 
     constructor(config: Config) {
@@ -59,19 +63,24 @@ export class App {
             this.privateCommander.add(...module.createCommands(true));
         });
 
-        this.responseHeaders = responseHeaders;
-        this.allowedRequestHeaders = config.allowedRequestHeaders || [];
-        this.infos = App.createInfos(config, this.publicCommander);
-
-        this.publicCommander.onMessage.on(message => this.onMessage.emit(this, 'public: ' + message));
-        this.privateCommander.onMessage.on(message => this.onMessage.emit(this, 'private: ' + message));
-
         this.config = Object.assign({
             name: infos.name,
             version: infos.version,
             author: infos.author,
             description: infos.description
         }, DEFAULT_CONFIG, config);
+
+        this.responseHeaders = responseHeaders;
+        this.allowedRequestHeaders = config.allowedRequestHeaders || [];
+
+        this.textInfos = App.createInfos(this.config, this.publicCommander);
+        this.jsonInfos = App.createInfos(this.config, this.publicCommander, true);
+
+        this.textInfoResponse = new CoreJS.TextResponse(this.textInfos);
+        this.jsonInfoResponse = new CoreJS.Response(this.jsonInfos, CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
+
+        this.publicCommander.onMessage.on(message => this.onMessage.emit(this, 'public: ' + message));
+        this.privateCommander.onMessage.on(message => this.onMessage.emit(this, 'private: ' + message));
 
         this.allowedOrigins = responseHeaders[CoreJS.ResponseHeader.AllowOrigin]
             ? (responseHeaders[CoreJS.ResponseHeader.AllowOrigin] as string).split(',')
@@ -119,7 +128,16 @@ export class App {
         return this.privateCommander.executeCLI();
     }
 
-    private static createInfos(config: Config, commander: CoreJS.Commander): string {
+    private static createInfos(config: Config, commander: CoreJS.Commander, json = false): string {
+        if (json) {
+            return JSON.stringify({
+                name: config.name,
+                version: config.version,
+                author: config.author,
+                description: config.description
+            });
+        }
+
         let result = `${config.name} v${config.version} by ${config.author}\n`;
 
         if (config.description)
