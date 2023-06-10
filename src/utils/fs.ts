@@ -18,5 +18,11 @@ export function loadModule<T>(config: LoadModuleConfig, ...args: any[]): T {
 }
 
 export function loadConfig<T>(name = 'config.json'): T {
-    return require(`${process.cwd()}/${name}`);
+    const path = `${process.cwd()}/${name}`;
+
+    try {
+        return require(path);
+    } catch (error) {
+        throw new Error(`Cannot find config '${path}'`);
+    }
 }

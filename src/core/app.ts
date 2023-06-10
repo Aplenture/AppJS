@@ -49,10 +49,6 @@ export class App {
 
         responseHeaders[CoreJS.ResponseHeader.AllowHeaders] = (config.allowedRequestHeaders || []).join(",");
 
-        process.on('exit', code => this.onMessage.emit(this, "exit with code " + code));
-        process.on('uncaughtException', error => this.onError.emit(this, error));
-        process.on('unhandledRejection', reason => this.onError.emit(this, reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
-
         (config.modules || []).forEach(data => {
             const module: Module = loadModule(data, data.config);
 
@@ -97,6 +93,10 @@ export class App {
             description: "stops the server",
             action: async () => this.stop() as any || "server stopped"
         });
+
+        process.on('exit', code => this.onMessage.emit(this, "exit with code " + code));
+        process.on('uncaughtException', error => this.onError.emit(this, error));
+        process.on('unhandledRejection', reason => this.onError.emit(this, reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
     }
 
     public get name(): string { return this.config.name; }
@@ -141,14 +141,12 @@ export class App {
     }
 
     private static createInfos(config: Config, commander: CoreJS.Commander, json = false): string {
-        if (json) {
-            return JSON.stringify({
-                name: config.name,
-                version: config.version,
-                author: config.author,
-                description: config.description
-            });
-        }
+        if (json) return JSON.stringify({
+            name: config.name,
+            version: config.version,
+            author: config.author,
+            description: config.description
+        });
 
         let result = `${config.name} v${config.version} by ${config.author}\n`;
 
