@@ -47,6 +47,15 @@ export class App {
 
         if (cli) {
             this.commander.set({
+                name: 'help',
+                action: async args => new CoreJS.TextResponse(this.commander.help(args.command && args.command.toString())),
+                description: 'Lists all commands or returns details of specific <command>.',
+                parameters: [
+                    new CoreJS.StringParameter('command', 'Lists all commands with this prefix or returns details of specific command.', '')
+                ]
+            });
+
+            this.commander.set({
                 name: 'start',
                 description: "starts the server",
                 action: async () => {
