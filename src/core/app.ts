@@ -50,8 +50,6 @@ export class App {
                 name: 'start',
                 description: "starts the server",
                 action: async () => {
-                    const server = new Server(this, this.config);
-
                     await this.init(false);
 
                     server.onMessage.on(message => this.onMessage.emit(this, message));
