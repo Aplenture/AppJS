@@ -52,9 +52,9 @@ export class App {
                 action: async () => {
                     await this.init(false);
 
+                    const server = new Server(this, this.config);
                     server.onMessage.on(message => this.onMessage.emit(this, message));
                     server.onError.on(error => this.onError.emit(this, error));
-
                     server.start();
 
                     return new CoreJS.TextResponse("server started");
