@@ -20,21 +20,38 @@ export class App {
 
     private readonly modules: readonly Module[];
 
-    private readonly commander = new CoreJS.Commander({
-        fallback: async () => CoreJS.RESPONSE_NO_CONTENT
-    });
+    private readonly commander: CoreJS.Commander;
 
-    constructor(config: Config) {
+    constructor(config: Config, globalArgs: any = {}) {
         const infos: any = loadConfig('package.json');
+        const debug = config.debug || globalArgs.debug;
+        const name = config.name || infos.name;
+        const version = config.version || infos.version;
+        const author = config.author || infos.author;
+        const description = `${name} v${version} by ${author}${config.description || infos.description
+            ? '\n\n' + (config.description || infos.description)
+            : ''}`;
 
-        this.config = Object.assign({
-            name: infos.name,
-            version: infos.version,
-            author: infos.author,
-            description: infos.description
-        }, config);
+        this.config = {
+            debug,
+            name,
+            version,
+            author,
+            description
+        };
 
         this.modules = (config.modules || []).map(data => loadModule(data, data.config));
+
+        const parameters: readonly CoreJS.Parameter<any>[] = Object.assign([], ...this.modules.map(module => module.parameters), [
+            new CoreJS.BoolParameter('debug', 'enables/disables debug mode', false)
+        ]);
+
+        this.commander = new CoreJS.Commander({
+            fallback: async () => CoreJS.RESPONSE_NO_CONTENT,
+            description,
+            parameters,
+            globalArgs
+        });
 
         this.commander.onMessage.on(message => this.onMessage.emit(this, message));
     }
@@ -43,6 +60,11 @@ export class App {
     public get debug(): boolean { return this.config.debug; }
 
     public async init(cli: boolean) {
+        const options = {
+            debug: this.debug,
+            cli
+        };
+
         this.commander.clear();
 
         if (cli) {
@@ -71,7 +93,7 @@ export class App {
             });
         }
 
-        await Promise.all(this.modules.map(async module => module.init(cli).then(commands => commands.forEach(command => this.commander.set(command)))));
+        await Promise.all(this.modules.map(async module => module.init(options).then(commands => commands.forEach(command => this.commander.set(command)))));
     }
 
     public async execute(command?: string, args: any = {}): Promise<CoreJS.Response> {
@@ -109,18 +131,6 @@ export class App {
             description: this.config.description
         });
 
-        let result = `${this.config.name} v${this.config.version} by ${this.config.author}\n`;
-
-        if (this.config.description)
-            result += '\n' + this.config.description + '\n';
-
-        if (this.commander.count) {
-            result += '\nCommands:\n';
-            result += this.commander.help();
-        } else {
-            result += '\nNo commands found!\n'
-        }
-
-        return result;
+        return this.commander.help();
     }
 }

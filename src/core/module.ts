@@ -1,8 +1,21 @@
 import * as CoreJS from "corejs";
 
-export abstract class Module {
-    constructor(public readonly config: any) { }
+interface Options {
+    readonly debug: boolean;
+    readonly cli: boolean;
+}
 
-    public abstract init(cli: boolean): Promise<CoreJS.Command<CoreJS.Response>[]>;
+export interface ModuleConfig {
+    readonly name: string;
+}
+
+export abstract class Module {
+    public readonly abstract parameters: readonly CoreJS.Parameter<any>[];
+
+    constructor(public readonly config: ModuleConfig) {
+        if (!config.name) throw new Error(`missing name in module config`);
+    }
+
+    public abstract init(options: Options): Promise<CoreJS.Command<CoreJS.Response>[]>;
     public abstract validate(command: string, args: any): Promise<CoreJS.ErrorResponse | void>;
 }
