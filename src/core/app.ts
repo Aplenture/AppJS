@@ -1,24 +1,15 @@
 import * as CoreJS from "corejs";
-import * as HTTP from "http";
 import { loadConfig, loadModule, LoadModuleConfig } from "../utils";
-import { Commander } from "./commander";
 import { Module } from "./module";
+import { Server, ServerConfig } from "./server";
 
-const DEFAULT_CONFIG = {
-    host: 'localhost'
-}
-
-interface Config {
+interface Config extends ServerConfig {
     readonly debug?: boolean;
     readonly name?: string;
     readonly version?: string;
     readonly author?: string;
     readonly description?: string;
-    readonly host?: string;
-    readonly port?: number;
     readonly modules?: ReadonlyArray<LoadModuleConfig & { readonly config?: any; }>;
-    readonly responseHeaders?: NodeJS.ReadOnlyDict<HTTP.OutgoingHttpHeader>;
-    readonly allowedRequestHeaders?: readonly string[];
 }
 
 export class App {
@@ -26,208 +17,103 @@ export class App {
     public readonly onError = new CoreJS.Event<App, Error>('App.onError');
 
     public readonly config: Config;
-    public readonly textInfos: string;
-    public readonly jsonInfos: string;
 
-    private readonly responseHeaders: NodeJS.ReadOnlyDict<HTTP.OutgoingHttpHeader>;
-    private readonly allowedRequestHeaders: readonly string[];
-    private readonly allowedOrigins: readonly string[];
+    private readonly modules: readonly Module[];
 
-    private readonly jsonInfoResponse: CoreJS.Response;
-    private readonly textInfoResponse: CoreJS.Response;
-
-    private stopAction: () => void = null;
-
-    private readonly privateCommander = new Commander();
-    private readonly publicCommander = new CoreJS.Commander({
-        fallback: async args => args.json ? this.jsonInfoResponse : this.textInfoResponse
+    private readonly commander = new CoreJS.Commander({
+        fallback: async () => CoreJS.RESPONSE_NO_CONTENT
     });
 
     constructor(config: Config) {
         const infos: any = loadConfig('package.json');
-        const responseHeaders: NodeJS.Dict<HTTP.OutgoingHttpHeader> = Object.assign({}, config.responseHeaders || {});
-
-        responseHeaders[CoreJS.ResponseHeader.AllowHeaders] = (config.allowedRequestHeaders || []).join(",");
-
-        (config.modules || []).forEach(data => {
-            const module: Module = loadModule(data, data.config);
-
-            this.publicCommander.onCommand.on((args, command) => module.onCommand.emit(command, args));
-            this.publicCommander.add(...module.createCommands(false));
-
-            this.privateCommander.onCommand.on((args, command) => module.onCommand.emit(command, args));
-            this.privateCommander.add(...module.createCommands(true));
-        });
 
         this.config = Object.assign({
             name: infos.name,
             version: infos.version,
             author: infos.author,
             description: infos.description
-        }, DEFAULT_CONFIG, config);
+        }, config);
 
-        this.responseHeaders = responseHeaders;
-        this.allowedRequestHeaders = config.allowedRequestHeaders || [];
+        this.modules = (config.modules || []).map(data => loadModule(data, data.config));
 
-        this.textInfos = App.createInfos(this.config, this.publicCommander);
-        this.jsonInfos = App.createInfos(this.config, this.publicCommander, true);
-
-        this.textInfoResponse = new CoreJS.TextResponse(this.textInfos);
-        this.jsonInfoResponse = new CoreJS.Response(this.jsonInfos, CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
-
-        this.publicCommander.onMessage.on(message => this.onMessage.emit(this, 'public: ' + message));
-        this.privateCommander.onMessage.on(message => this.onMessage.emit(this, 'private: ' + message));
-
-        this.allowedOrigins = responseHeaders[CoreJS.ResponseHeader.AllowOrigin]
-            ? (responseHeaders[CoreJS.ResponseHeader.AllowOrigin] as string).split(',')
-            : ['*'];
-
-        this.privateCommander.add({
-            name: 'start',
-            description: "starts the server",
-            action: async () => this.start() && "server started"
-        });
-
-        this.privateCommander.add({
-            name: 'stop',
-            description: "stops the server",
-            action: async () => this.stop() as any || "server stopped"
-        });
-
-        process.on('exit', code => this.onMessage.emit(this, "exit with code " + code));
-        process.on('uncaughtException', error => this.onError.emit(this, error));
-        process.on('unhandledRejection', reason => this.onError.emit(this, reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
+        this.commander.onMessage.on(message => this.onMessage.emit(this, message));
     }
 
     public get name(): string { return this.config.name; }
     public get debug(): boolean { return this.config.debug; }
 
-    public start() {
-        if (this.stopAction) throw new Error('server is running already');
-        if (!this.config.port) throw new Error('missing port in app config');
+    public async init(cli: boolean) {
+        this.commander.clear();
 
-        const server = HTTP.createServer((request, response) => this.onRequest(request, response));
+        if (cli) {
+            this.commander.set({
+                name: 'start',
+                description: "starts the server",
+                action: async () => {
+                    const server = new Server(this, this.config);
 
-        server.on('error', error => this.onError.emit(this, error));
-        server.listen({ host: this.config.host, port: this.config.port });
+                    await this.init(false);
 
-        this.onMessage.emit(this, 'server started');
+                    server.onMessage.on(message => this.onMessage.emit(this, message));
+                    server.onError.on(error => this.onError.emit(this, error));
 
-        return new Promise<void>(resolve => this.stopAction = () => {
-            server.close();
-            this.stopAction = null;
-            this.onMessage.emit(this, 'server stopped');
-            resolve();
-        });
-    }
+                    server.start();
 
-    public stop() {
-        if (!this.stopAction)
-            throw new Error('server is not running currently');
-
-        this.stopAction();
-    }
-
-    public execute(command?: string, args?: {}): Promise<CoreJS.Response> {
-        return this.privateCommander.execute(command, args);
-    }
-
-    public executeLine(commandLine?: string): Promise<CoreJS.Response> {
-        return this.privateCommander.executeLine(commandLine);
-    }
-
-    public executeCLI() {
-        return this.privateCommander.executeCLI();
-    }
-
-    private static createInfos(config: Config, commander: CoreJS.Commander, json = false): string {
-        if (json) return JSON.stringify({
-            name: config.name,
-            version: config.version,
-            author: config.author,
-            description: config.description
-        });
-
-        let result = `${config.name} v${config.version} by ${config.author}\n`;
-
-        if (config.description)
-            result += '\n' + config.description + '\n';
-
-        if (commander.count) {
-            result += '\nCommands:\n';
-            result += commander.help();
+                    return new CoreJS.TextResponse("server started");
+                }
+            });
         }
 
-        return result;
+        await Promise.all(this.modules.map(async module => module.init(cli).then(commands => commands.forEach(command => this.commander.set(command)))));
     }
 
-    private async onRequest(request: HTTP.IncomingMessage, response: HTTP.ServerResponse) {
-        const responseHeaders: NodeJS.Dict<HTTP.OutgoingHttpHeader> = Object.assign({}, this.responseHeaders);
-
-        // todo: catch allowed methods
-        // todo: catch allowed headers
-        // todo: catch max age
-
-        responseHeaders[CoreJS.ResponseHeader.ContentType] = CoreJS.ResponseType.Text;
-
-        // catch invalid origins
-        if (!this.allowedOrigins.includes(request.headers.origin) && !this.allowedOrigins.includes('*')) {
-            response.writeHead(CoreJS.ResponseCode.Forbidden, responseHeaders);
-            response.end();
-            return;
-        }
-
-        if (request.headers.origin)
-            responseHeaders[CoreJS.ResponseHeader.AllowOrigin] = request.headers.origin;
-
-        // catch option requests
-        if (CoreJS.RequestMethod.Option == request.method) {
-            response.writeHead(CoreJS.ResponseCode.NoContent, responseHeaders);
-            response.end();
-            return;
-        }
-
-        const ip = request.socket.remoteAddress;
-        const url = new URL(request.url, 'http://' + request.headers.host + '/');
-        const command = url.pathname.substring(1);
-        const args: any = {};
-
-        // parse url args
-        url.searchParams.forEach((value, key) => args[key]
-            ? Array.isArray(args[key])
-                ? args[key].push(value)
-                : args[key] = [args[key], value]
-            : args[key] = value
-        );
-
-        // write allowed request headers to args
-        this.allowedRequestHeaders.forEach(key => args[key] = request.headers[key]);
-
-        this.onMessage.emit(this, `'${ip}' requested '${request.url}'`);
-
-        let code: CoreJS.ResponseCode;
-        let message: string;
-
+    public async execute(command?: string, args: any = {}): Promise<CoreJS.Response> {
         try {
-            const result: CoreJS.Response = await this.publicCommander.execute(command, args);
+            if (!command)
+                return new CoreJS.TextResponse(this.commander.help(args.command && args.command.toString()));
 
-            responseHeaders[CoreJS.ResponseHeader.ContentType] = result.type;
+            const validationResponse = (await Promise.all(this.modules.map(module => module.validate(command, args))))
+                .find(result => result);
 
-            code = result.code;
-            message = result.data;
+            if (validationResponse)
+                return validationResponse;
+
+            return await this.commander.execute(command, args);
         } catch (error) {
-            this.onError.emit(this, error);
-
-            code = isNaN(error.code)
+            const code = isNaN(error.code)
                 ? CoreJS.ResponseCode.InternalServerError
                 : error.code;
 
-            message = error instanceof CoreJS.CoreError
+            const message = error instanceof CoreJS.CoreError
                 ? error.message
                 : '#_something_went_wrong';
-        } finally {
-            response.writeHead(code, responseHeaders);
-            response.end(message);
+
+            this.onError.emit(this, error);
+
+            return new CoreJS.ErrorResponse(code, message);
         }
+    }
+
+    public createInfos(json = false): string {
+        if (json) return JSON.stringify({
+            name: this.config.name,
+            version: this.config.version,
+            author: this.config.author,
+            description: this.config.description
+        });
+
+        let result = `${this.config.name} v${this.config.version} by ${this.config.author}\n`;
+
+        if (this.config.description)
+            result += '\n' + this.config.description + '\n';
+
+        if (this.commander.count) {
+            result += '\nCommands:\n';
+            result += this.commander.help();
+        } else {
+            result += '\nNo commands found!\n'
+        }
+
+        return result;
     }
 }
