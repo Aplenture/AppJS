@@ -10,8 +10,6 @@ export interface ModuleConfig {
 }
 
 export abstract class Module {
-    public readonly abstract parameters: readonly CoreJS.Parameter<any>[];
-
     constructor(public readonly config: ModuleConfig) {
         if (!config.name) throw new Error(`missing name in module config`);
     }

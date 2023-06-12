@@ -22,7 +22,7 @@ export class App {
 
     private readonly commander: CoreJS.Commander;
 
-    constructor(config: Config, globalArgs: any = {}) {
+    constructor(config: Config, globalArgs: any = {}, globalParams: readonly CoreJS.Parameter<any>[] = []) {
         const infos: any = loadConfig('package.json');
         const debug = config.debug || globalArgs.debug;
         const name = config.name || infos.name;
@@ -31,6 +31,10 @@ export class App {
         const description = `${name} v${version} by ${author}${config.description || infos.description
             ? '\n\n' + (config.description || infos.description)
             : ''}`;
+
+        globalParams = Object.assign([
+            new CoreJS.BoolParameter('debug', 'enables/disables debug mode', false)
+        ], globalParams);
 
         this.config = {
             debug,
@@ -42,14 +46,12 @@ export class App {
 
         this.modules = (config.modules || []).map(data => loadModule(data, data.config));
 
-        const parameters: readonly CoreJS.Parameter<any>[] = Object.assign([], ...this.modules.map(module => module.parameters), [
-            new CoreJS.BoolParameter('debug', 'enables/disables debug mode', false)
-        ]);
-
         this.commander = new CoreJS.Commander({
-            fallback: async () => CoreJS.RESPONSE_NO_CONTENT,
+            fallback: debug
+                ? async () => new CoreJS.ErrorResponse(CoreJS.ResponseCode.BadRequest, 'unknown command')
+                : async () => CoreJS.RESPONSE_NO_CONTENT,
             description,
-            parameters,
+            globalParams,
             globalArgs
         });
 
