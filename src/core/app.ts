@@ -19,7 +19,7 @@ export class App {
 
     public readonly config: Config;
 
-    private readonly modules: readonly ModuleJS.Module[];
+    private readonly modules: readonly ModuleJS.Module<any>[];
 
     private readonly commander: CommanderJS.Commander;
 
@@ -46,6 +46,7 @@ export class App {
         };
 
         this.modules = (config.modules || []).map(data => loadModule(data, data.config));
+        this.modules.forEach(module => module.onMessage.on(message => this.onMessage.emit(this, message)));
 
         this.commander = new CommanderJS.Commander({
             fallback: debug
@@ -102,6 +103,28 @@ export class App {
                     await Promise.all(this.modules.map(module => module.update()));
 
                     return new CoreJS.TextResponse("app updated");
+                }
+            });
+
+            this.commander.set({
+                name: 'reset',
+                description: "resets the app",
+                action: async () => {
+                    await Promise.all(this.modules.map(module => module.reset()));
+                    await Promise.all(this.modules.map(module => module.update()));
+
+                    return new CoreJS.TextResponse("app reset");
+                }
+            });
+
+            this.commander.set({
+                name: 'revert',
+                description: "reverts the app",
+                action: async () => {
+                    await Promise.all(this.modules.map(module => module.revert()));
+                    await Promise.all(this.modules.map(module => module.update()));
+
+                    return new CoreJS.TextResponse("app revert");
                 }
             });
         }
