@@ -1,6 +1,7 @@
 import * as CoreJS from "corejs";
+import * as CommanderJS from "commanderjs";
+import * as ModuleJS from "modulejs";
 import { loadConfig, loadModule, LoadModuleConfig } from "../utils";
-import { Module } from "./module";
 import { Server, ServerConfig } from "./server";
 
 interface Config extends ServerConfig {
@@ -18,11 +19,11 @@ export class App {
 
     public readonly config: Config;
 
-    private readonly modules: readonly Module[];
+    private readonly modules: readonly ModuleJS.Module[];
 
-    private readonly commander: CoreJS.Commander;
+    private readonly commander: CommanderJS.Commander;
 
-    constructor(config: Config, globalArgs: any = {}, globalParams: readonly CoreJS.Parameter<any>[] = []) {
+    constructor(config: Config, globalArgs: any = {}, globalParams: readonly CommanderJS.Parameter<any>[] = []) {
         const infos: any = loadConfig('package.json');
         const debug = config.debug || globalArgs.debug;
         const name = config.name || infos.name;
@@ -33,7 +34,7 @@ export class App {
             : ''}`;
 
         globalParams = Object.assign([
-            new CoreJS.BoolParameter('debug', 'enables/disables debug mode', false)
+            new CommanderJS.BoolParameter('debug', 'enables/disables debug mode', false)
         ], globalParams);
 
         this.config = {
@@ -46,7 +47,7 @@ export class App {
 
         this.modules = (config.modules || []).map(data => loadModule(data, data.config));
 
-        this.commander = new CoreJS.Commander({
+        this.commander = new CommanderJS.Commander({
             fallback: debug
                 ? async () => new CoreJS.ErrorResponse(CoreJS.ResponseCode.BadRequest, 'unknown command')
                 : async () => CoreJS.RESPONSE_NO_CONTENT,
@@ -75,7 +76,7 @@ export class App {
                 action: async args => new CoreJS.TextResponse(this.commander.help(args.command && args.command.toString())),
                 description: 'Lists all commands or returns details of specific <command>.',
                 parameters: [
-                    new CoreJS.StringParameter('command', 'Lists all commands with this prefix or returns details of specific command.', '')
+                    new CommanderJS.StringParameter('command', 'Lists all commands with this prefix or returns details of specific command.', '')
                 ]
             });
 
@@ -93,6 +94,16 @@ export class App {
                     return new CoreJS.TextResponse("server started");
                 }
             });
+
+            this.commander.set({
+                name: 'update',
+                description: "updates the app",
+                action: async () => {
+                    await Promise.all(this.modules.map(module => module.update()));
+
+                    return new CoreJS.TextResponse("app updated");
+                }
+            });
         }
 
         await Promise.all(this.modules.map(async module => module.init(options).then(commands => commands.forEach(command => this.commander.set(command)))));
@@ -101,7 +112,7 @@ export class App {
     public async execute(command?: string, args: any = {}): Promise<CoreJS.Response> {
         try {
             if (!command)
-                return new CoreJS.TextResponse(this.commander.help(args.command && args.command.toString()));
+                return new CoreJS.TextResponse(this.help(args.command && args.command.toString()));
 
             const validationResponse = (await Promise.all(this.modules.map(module => module.validate(command, args))))
                 .find(result => result);
@@ -130,9 +141,19 @@ export class App {
             name: this.config.name,
             version: this.config.version,
             author: this.config.author,
-            description: this.config.description
+            description: this.config.description,
+            modules: this.modules.map(module => module.name)
         });
 
-        return this.commander.help();
+        return this.help();
+    }
+
+    public help(prefix?: string) {
+        let result = this.commander.help(prefix);
+
+        if (this.modules.length)
+            result += '\nModules:\n' + this.modules.map(modules => modules.name).join('\n') + '\n';
+
+        return result;
     }
 }

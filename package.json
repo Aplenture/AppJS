@@ -35,6 +35,8 @@
         "typescript": "^4.9.4"
     },
     "dependencies": {
-        "corejs": "github:Aplenture/CoreJS"
+        "commanderjs": "github:Aplenture/CommanderJS",
+        "corejs": "github:Aplenture/CoreJS",
+        "modulejs": "github:Aplenture/ModuleJS"
     }
 }
