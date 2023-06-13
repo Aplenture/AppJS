@@ -102,7 +102,7 @@ export class App {
                 action: async () => {
                     await Promise.all(this.modules.map(module => module.update()));
 
-                    return new CoreJS.TextResponse("app updated");
+                    return new CoreJS.TextResponse("updated");
                 }
             });
 
@@ -111,9 +111,8 @@ export class App {
                 description: "resets the app",
                 action: async () => {
                     await Promise.all(this.modules.map(module => module.reset()));
-                    await Promise.all(this.modules.map(module => module.update()));
 
-                    return new CoreJS.TextResponse("app reset");
+                    return new CoreJS.TextResponse("reset");
                 }
             });
 
@@ -122,9 +121,8 @@ export class App {
                 description: "reverts the app",
                 action: async () => {
                     await Promise.all(this.modules.map(module => module.revert()));
-                    await Promise.all(this.modules.map(module => module.update()));
 
-                    return new CoreJS.TextResponse("app revert");
+                    return new CoreJS.TextResponse("reverted");
                 }
             });
         }
