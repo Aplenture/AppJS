@@ -37,13 +37,13 @@ export class App {
             new CommanderJS.BoolParameter('debug', 'enables/disables debug mode', false)
         ], globalParams);
 
-        this.config = {
+        this.config = Object.assign({}, config, {
             debug,
             name,
             version,
             author,
             description
-        };
+        });
 
         this.modules = (config.modules || []).map(data => loadModule(data, data.config));
         this.modules.forEach(module => module.onMessage.on(message => this.onMessage.emit(this, message)));
