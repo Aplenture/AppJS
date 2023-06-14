@@ -98,9 +98,16 @@ export class App {
 
             this.commander.set({
                 name: 'update',
-                description: "updates the app",
-                action: async () => {
-                    await Promise.all(this.modules.map(module => module.update()));
+                description: "updates all modules or specific [module](s)",
+                parameters: [
+                    new CommanderJS.ArrayParameter('module', 'to revert', null)
+                ],
+                action: async args => {
+                    const modules = args.module
+                        ? this.modules.filter(module => args.module.includes(module.name))
+                        : this.modules;
+
+                    await Promise.all(modules.map(module => module.update()));
 
                     return new CoreJS.TextResponse("updated");
                 }
@@ -108,9 +115,16 @@ export class App {
 
             this.commander.set({
                 name: 'reset',
-                description: "resets the app",
-                action: async () => {
-                    await Promise.all(this.modules.map(module => module.reset()));
+                description: "resets all modules or specific [module](s)",
+                parameters: [
+                    new CommanderJS.ArrayParameter('module', 'to revert', null)
+                ],
+                action: async args => {
+                    const modules = args.module
+                        ? this.modules.filter(module => args.module.includes(module.name))
+                        : this.modules;
+
+                    await Promise.all(modules.map(module => module.reset()));
 
                     return new CoreJS.TextResponse("reset");
                 }
@@ -118,11 +132,19 @@ export class App {
 
             this.commander.set({
                 name: 'revert',
-                description: "reverts the app",
-                action: async () => {
-                    await Promise.all(this.modules.map(module => module.revert()));
+                description: "reverts specific <version> of all modules or specific [module](s)",
+                parameters: [
+                    new CommanderJS.ArrayParameter('module', 'to revert', null),
+                    new CommanderJS.NumberParameter('version', 'all versions above or equal will be reverted')
+                ],
+                action: async args => {
+                    const modules = args.module
+                        ? this.modules.filter(module => args.module.includes(module.name))
+                        : this.modules;
 
-                    return new CoreJS.TextResponse("reverted");
+                    await Promise.all(modules.map(module => module.revert(args.version)));
+
+                    return new CoreJS.TextResponse("reverted version " + args.version);
                 }
             });
         }
