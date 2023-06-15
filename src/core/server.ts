@@ -7,6 +7,7 @@ const DEFAULT_CONFIG = {
 }
 
 export interface ServerConfig {
+    readonly debug?: boolean;
     readonly host?: string;
     readonly port?: number;
     readonly responseHeaders?: NodeJS.ReadOnlyDict<HTTP.OutgoingHttpHeader>;
@@ -46,8 +47,10 @@ export class Server {
         this.jsonInfoResponse = new CoreJS.Response(app.createInfos(true), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
     }
 
+    public get isRunning(): boolean { return !!this.stopAction; }
+
     public start() {
-        if (this.stopAction) throw new Error('server is running already');
+        if (this.isRunning) throw new Error('server is running already');
         if (!this.config.port) throw new Error('missing port in app config');
 
         const server = HTTP.createServer((request, response) => this.onRequest(request, response));
@@ -55,7 +58,7 @@ export class Server {
         server.on('error', error => this.onError.emit(this, error));
         server.listen({ host: this.config.host, port: this.config.port });
 
-        this.onMessage.emit(this, 'server started');
+        this.onMessage.emit(this, `server started (debug mode: ${CoreJS.parseFromBool(this.config.debug)})`);
 
         return new Promise<void>(resolve => this.stopAction = () => {
             server.close();
@@ -66,13 +69,17 @@ export class Server {
     }
 
     public stop() {
-        if (!this.stopAction)
-            throw new Error('server is not running currently');
+        if (!this.isRunning)
+            return;
 
         this.stopAction();
     }
 
     private async onRequest(request: HTTP.IncomingMessage, response: HTTP.ServerResponse) {
+        const stopwatch = new CoreJS.Stopwatch();
+
+        stopwatch.start();
+
         const responseHeaders: NodeJS.Dict<HTTP.OutgoingHttpHeader> = Object.assign({}, this.responseHeaders);
 
         responseHeaders[CoreJS.ResponseHeader.ContentType] = CoreJS.ResponseType.Text;
@@ -110,8 +117,6 @@ export class Server {
         // write allowed request headers to args
         this.allowedRequestHeaders.forEach(key => args[key] = request.headers[key]);
 
-        this.onMessage.emit(this, `'${ip}' requested '${request.url}'`);
-
         const result: CoreJS.Response = command
             ? await this.app.execute(command, args)
             : args.json
@@ -122,5 +127,9 @@ export class Server {
 
         response.writeHead(result.code, responseHeaders);
         response.end(result.data);
+
+        stopwatch.stop();
+
+        this.onMessage.emit(this, `'${ip}' requested '${request.url}' duration ${CoreJS.formatDuration(stopwatch.duration, { seconds: true, milliseconds: true })}`);
     }
 }

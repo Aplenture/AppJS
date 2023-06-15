@@ -1,16 +1,15 @@
 import * as CoreJS from "corejs";
 import * as CommanderJS from "commanderjs";
 import * as ModuleJS from "modulejs";
-import { loadConfig, loadModule, LoadModuleConfig } from "../utils";
 import { Server, ServerConfig } from "./server";
 
-interface Config extends ServerConfig {
+interface Config {
     readonly debug?: boolean;
     readonly name?: string;
     readonly version?: string;
     readonly author?: string;
     readonly description?: string;
-    readonly modules?: ReadonlyArray<LoadModuleConfig & { readonly config?: any; }>;
+    readonly modules?: ReadonlyArray<CoreJS.LoadModuleConfig & { readonly config?: any; }>;
 }
 
 export class App {
@@ -22,9 +21,20 @@ export class App {
     private readonly modules: readonly ModuleJS.Module<any>[];
 
     private readonly commander: CommanderJS.Commander;
+    private readonly server: Server;
 
-    constructor(config: Config, globalArgs: any = {}, globalParams: readonly CommanderJS.Parameter<any>[] = []) {
-        const infos: any = loadConfig('package.json');
+    constructor(
+        config: Config & ServerConfig,
+        globalArgs: NodeJS.ReadOnlyDict<any> = {},
+        globalParams: readonly CommanderJS.Parameter<any>[] = []
+    ) {
+        globalParams = Object.assign([
+            new CommanderJS.BoolParameter('debug', 'enables/disables debug mode', false)
+        ], globalParams);
+
+        globalArgs = CommanderJS.parseArgs(globalArgs, globalParams);
+
+        const infos: any = CoreJS.loadConfig('package.json');
         const debug = config.debug || globalArgs.debug;
         const name = config.name || infos.name;
         const version = config.version || infos.version;
@@ -33,19 +43,15 @@ export class App {
             ? '\n\n' + (config.description || infos.description)
             : ''}`;
 
-        globalParams = Object.assign([
-            new CommanderJS.BoolParameter('debug', 'enables/disables debug mode', false)
-        ], globalParams);
-
-        this.config = Object.assign({}, config, {
+        this.config = {
             debug,
             name,
             version,
             author,
             description
-        });
+        };
 
-        this.modules = (config.modules || []).map(data => loadModule(data, data.config));
+        this.modules = (config.modules || []).map(data => CoreJS.loadModule(data, data.config));
         this.modules.forEach(module => module.onMessage.on(message => this.onMessage.emit(this, message)));
 
         this.commander = new CommanderJS.Commander({
@@ -57,21 +63,29 @@ export class App {
             globalArgs
         });
 
-        this.commander.onMessage.on(message => this.onMessage.emit(this, message));
+        this.server = new Server(this, Object.assign({}, config, {
+            debug
+        }));
+
+        this.server.onMessage.on(message => this.onMessage.emit(this, message));
+        this.server.onError.on(error => this.onError.emit(this, error));
+
+        if (debug)
+            this.commander.onMessage.on(message => this.onMessage.emit(this, message));
     }
 
     public get name(): string { return this.config.name; }
     public get debug(): boolean { return this.config.debug; }
 
-    public async init(cli: boolean) {
-        const options = {
+    public async init(admin: boolean) {
+        const options: ModuleJS.Options = {
             debug: this.debug,
-            cli
+            admin
         };
 
         this.commander.clear();
 
-        if (cli) {
+        if (admin) {
             this.commander.set({
                 name: 'help',
                 action: async args => new CoreJS.TextResponse(this.commander.help(args.command && args.command.toString())),
@@ -85,14 +99,13 @@ export class App {
                 name: 'start',
                 description: "starts the server",
                 action: async () => {
+                    if (this.server.isRunning)
+                        return new CoreJS.ErrorResponse(CoreJS.ResponseCode.Forbidden, 'server is running already');
+
                     await this.init(false);
+                    await this.server.start();
 
-                    const server = new Server(this, this.config);
-                    server.onMessage.on(message => this.onMessage.emit(this, message));
-                    server.onError.on(error => this.onError.emit(this, error));
-                    server.start();
-
-                    return new CoreJS.TextResponse("server started");
+                    return new CoreJS.TextResponse("server stopped");
                 }
             });
 
@@ -150,6 +163,11 @@ export class App {
         }
 
         await Promise.all(this.modules.map(async module => module.init(options).then(commands => commands.forEach(command => this.commander.set(command)))));
+    }
+
+    public async close(): Promise<void> {
+        await this.server.stop();
+        await Promise.all(this.modules.map(module => module.close()));
     }
 
     public async execute(command?: string, args: any = {}): Promise<CoreJS.Response> {
