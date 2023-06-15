@@ -148,7 +148,7 @@ export class App {
                 description: "reverts specific <version> of all modules or specific [module](s)",
                 parameters: [
                     new CommanderJS.ArrayParameter('module', 'to revert', null),
-                    new CommanderJS.NumberParameter('version', 'all versions above or equal will be reverted')
+                    new CommanderJS.NumberParameter('version', 'all versions above or equal will be reverted', 0)
                 ],
                 action: async args => {
                     const modules = args.module
@@ -157,7 +157,7 @@ export class App {
 
                     await Promise.all(modules.map(module => module.revert(args.version)));
 
-                    return new CoreJS.TextResponse("reverted version " + args.version);
+                    return new CoreJS.TextResponse("reverted");
                 }
             });
         }
