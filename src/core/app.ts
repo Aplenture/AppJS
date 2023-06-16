@@ -215,13 +215,8 @@ export class App {
     }
 
     public help(prefix?: string) {
-        let result = this.commander.help(prefix, {
+        return this.commander.help(prefix, {
             globalParameters: this.isCLI
         });
-
-        if (this.modules.length)
-            result += '\nModules:\n' + this.modules.map(modules => modules.name).join('\n') + '\n';
-
-        return result;
     }
 }
