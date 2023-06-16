@@ -24,8 +24,8 @@ export class Server {
     private readonly allowedRequestHeaders: readonly string[];
     private readonly allowedOrigins: readonly string[];
 
-    private readonly jsonInfoResponse: CoreJS.Response;
-    private readonly textInfoResponse: CoreJS.Response;
+    private jsonInfoResponse: CoreJS.Response;
+    private textInfoResponse: CoreJS.Response;
 
     private stopAction: () => void = null;
 
@@ -42,9 +42,6 @@ export class Server {
         this.allowedOrigins = responseHeaders[CoreJS.ResponseHeader.AllowOrigin]
             ? (responseHeaders[CoreJS.ResponseHeader.AllowOrigin] as string).split(',')
             : ['*'];
-
-        this.textInfoResponse = new CoreJS.TextResponse(app.createInfos(false));
-        this.jsonInfoResponse = new CoreJS.Response(app.createInfos(true), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
     }
 
     public get isRunning(): boolean { return !!this.stopAction; }
@@ -57,6 +54,9 @@ export class Server {
 
         server.on('error', error => this.onError.emit(this, error));
         server.listen({ host: this.config.host, port: this.config.port });
+
+        this.textInfoResponse = new CoreJS.TextResponse(this.app.createInfos(false));
+        this.jsonInfoResponse = new CoreJS.Response(this.app.createInfos(true), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
 
         this.onMessage.emit(this, `server started (debug mode: ${CoreJS.parseFromBool(this.config.debug)})`);
 
