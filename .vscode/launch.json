@@ -11,6 +11,9 @@
             "program": "${workspaceFolder}/src/index.ts",
             "console": "integratedTerminal",
             "preLaunchTask": "build",
+            "args": [
+                "start"
+            ],
             "outFiles": [
                 "${workspaceFolder}/dist/**/*.js"
             ]

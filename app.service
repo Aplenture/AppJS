@@ -1,0 +1,12 @@
+[Unit]
+Description=<description>
+After=network.target
+
+[Service]
+WorkingDirectory=/home/<user>/<app_name>
+ExecStart=/usr/bin/npm start -- start
+Restart=on-failure
+User=<user>
+
+[Install]
+WantedBy=multi-user.target

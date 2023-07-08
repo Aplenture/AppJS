@@ -1,0 +1,39 @@
+{
+    "debug": false,
+    "name": "<app_name>",
+    "version": "",
+    "author": "<author>",
+    "description": "<description>",
+    "cli": {
+        "flags": [
+            "cli"
+        ],
+        "modules": [
+            {
+                "class": "Module",
+                "path": "node_modules/myModuleName/dist/index",
+                "config": {
+                    "name": "my_module_name"
+                }
+            }
+        ]
+    },
+    "server": {
+        "host": "localhost",
+        "port": 1337,
+        "responseHeaders": {},
+        "allowedRequestHeaders": [],
+        "flags": [
+            "cli"
+        ],
+        "modules": [
+            {
+                "class": "Module",
+                "path": "node_modules/myModuleName/dist/index",
+                "config": {
+                    "name": "my_module_name"
+                }
+            }
+        ]
+    }
+}
