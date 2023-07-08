@@ -13,7 +13,13 @@
                 "class": "Module",
                 "path": "node_modules/myModuleName/dist/index",
                 "config": {
-                    "name": "my_module_name"
+                    "name": "my_module_name",
+                    "database": {
+                        "host": "localhost",
+                        "user": "dev",
+                        "password": "",
+                        "database": "test_app"
+                    }
                 }
             }
         ]
@@ -23,17 +29,7 @@
         "port": 1337,
         "responseHeaders": {},
         "allowedRequestHeaders": [],
-        "flags": [
-            "cli"
-        ],
-        "modules": [
-            {
-                "class": "Module",
-                "path": "node_modules/myModuleName/dist/index",
-                "config": {
-                    "name": "my_module_name"
-                }
-            }
-        ]
+        "flags": [],
+        "modules": []
     }
 }
