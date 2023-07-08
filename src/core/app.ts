@@ -129,15 +129,13 @@ export class App {
             this.modules.push(module);
         });
 
-        this.commander.set({
-            name: 'ping',
+        this.commander.set('ping', {
             description: 'Returns pong.',
             execute: async () => new CoreJS.TextResponse('pong')
         });
 
         if (options.cli) {
-            this.commander.set({
-                name: 'help',
+            this.commander.set('help', {
                 description: 'Lists all commands or returns details of specific <command>.',
                 parameters: [
                     new CommanderJS.StringParameter('command', 'Lists all commands with this prefix or returns details of specific command.', '')
@@ -145,8 +143,7 @@ export class App {
                 execute: async args => new CoreJS.TextResponse(this.help(args.command && args.command.toString()))
             });
 
-            this.commander.set({
-                name: 'start',
+            this.commander.set('start', {
                 description: "starts the server",
                 execute: async () => {
                     if (this.isRunning)
@@ -159,8 +156,7 @@ export class App {
                 }
             });
 
-            this.commander.set({
-                name: 'update',
+            this.commander.set('update', {
                 description: "updates all modules or specific [module](s)",
                 parameters: [
                     new CommanderJS.ArrayParameter('module', 'to revert', null)
@@ -178,8 +174,7 @@ export class App {
                 }
             });
 
-            this.commander.set({
-                name: 'reset',
+            this.commander.set('reset', {
                 description: "resets all modules or specific [module](s)",
                 parameters: [
                     new CommanderJS.ArrayParameter('module', 'to revert', null)
@@ -197,8 +192,7 @@ export class App {
                 }
             });
 
-            this.commander.set({
-                name: 'revert',
+            this.commander.set('revert', {
                 description: "reverts specific <version> of all modules or specific [module](s)",
                 parameters: [
                     new CommanderJS.ArrayParameter('module', 'to revert', null),
@@ -222,7 +216,7 @@ export class App {
             command.onMessage.off({ listener: this.onMessage });
             command.onMessage.on((message, command) => this.onMessage.emit(this, `${command.name}: ${message}`), { listener: this.onMessage });
 
-            this.commander.set(command);
+            this.commander.set(`${module.name}/${command.name}`, command);
         }))));
     }
 
