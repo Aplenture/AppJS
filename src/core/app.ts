@@ -12,11 +12,6 @@ export interface Config {
     readonly modules?: ReadonlyArray<CoreJS.LoadModuleConfig & { readonly config?: any; }>;
 }
 
-export interface Options {
-    readonly globalParams?: readonly CommanderJS.Parameter<any>[];
-    readonly globalArgs?: NodeJS.ReadOnlyDict<any>;
-}
-
 export class App {
     public readonly onMessage = new CoreJS.Event<App, string>('App.onMessage');
     public readonly onError = new CoreJS.Event<App, Error>('App.onError');
@@ -30,12 +25,15 @@ export class App {
 
     private isCLI = false;
 
-    constructor(config: Config & ServerConfig, options: Options = {}) {
-        const globalParams = Object.assign([], options.globalParams || [], ModuleJS.Parameters);
-        const globalArgs = CommanderJS.parseArgs(options.globalArgs, globalParams);
+    constructor(config: Config & ServerConfig, args: NodeJS.ReadOnlyDict<any> = {}) {
+        // calculate debug by config first then args
+        args = Object.assign({ debug: config.debug }, args);
+
+        const globalParams = ModuleJS.Parameters;
+        const globalArgs = CommanderJS.parseArgs(args, globalParams);
 
         const infos: any = CoreJS.loadConfig('package.json');
-        const debug = config.debug || globalArgs.debug;
+        const debug = globalArgs.debug;
         const name = config.name || infos.name;
         const version = config.version || infos.version;
         const author = config.author || infos.author;
