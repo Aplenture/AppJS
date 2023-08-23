@@ -1,0 +1,34 @@
+{
+    "debug": false,
+    "name": "<app_name>",
+    "version": "",
+    "author": "<author>",
+    "description": "<description>",
+    "cli": {
+        "flags": [
+            "cli"
+        ],
+        "modules": [
+            {
+                "class": "Module",
+                "path": "node_modules/myModuleName/dist/index",
+                "options": {
+                    "name": "my_module_name",
+                    "database": {
+                        "host": "localhost",
+                        "user": "dev",
+                        "password": "",
+                        "database": "test_app"
+                    }
+                }
+            }
+        ]
+    },
+    "server": {
+        "host": "localhost",
+        "port": 1337,
+        "responseHeaders": {},
+        "flags": [],
+        "modules": []
+    }
+}
