@@ -21,7 +21,7 @@ process.on('uncaughtException', error => log.error(error));
 process.on('unhandledRejection', reason => log.error(reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
 
 const log = BackendJS.Log.createFileLog('./log.log');
-const config = new CoreJS.Config(...App.Parameters);
+const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...ModuleJS.GlobalParameters);
 const commander = new CoreJS.Commander();
 const infos: any = CoreJS.loadConfig('package.json');
 const commandLine = process.argv.slice(2).join(' ');
@@ -37,12 +37,6 @@ config.add(new CoreJS.ArrayParameter<string>(PARAMETER_PRIVATE_ROUTES, 'all rout
     new CoreJS.StringParameter('name', 'name of route'),
     new CoreJS.ArrayParameter('paths', 'all maodules and commands to call on this route (i.e. "my_module_name ping")', new CoreJS.StringParameter('', ''))
 ]), []));
-
-// setup config by server parameters
-Server.Parameters.forEach(param => config.add(param));
-
-// setup config by global module parameters
-ModuleJS.GlobalParameters.forEach(param => config.add(param));
 
 log.write('loading package.json');
 config.set(App.PARAMETER_VERSION, infos.version);
