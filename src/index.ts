@@ -7,6 +7,8 @@
 
 import * as BackendJS from "backendjs";
 import * as CoreJS from "corejs";
+import * as FS from "fs";
+import * as HTTP from "http";
 import * as ModuleJS from "modulejs";
 import { App, Server } from "./core";
 
@@ -47,24 +49,24 @@ config.deserialize(CoreJS.loadConfig());
 log.write('loading process args');
 config.deserialize(CoreJS.Args);
 
-commander.set({
-    name: 'help',
-    description: 'Lists all commands or returns details of specific <command>.',
-    parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('command', 'Lists all commands with this prefix or returns details of specific command.', '')
-    ),
-    execute: async args => {
-        const app = new App(config, args);
+// commander.set({
+//     name: 'help',
+//     description: 'lists all commands or returns details of specific <command>',
+//     parameters: new CoreJS.ParameterList(
+//         new CoreJS.StringParameter('command', 'Lists all commands with this prefix or returns details of specific command.', '')
+//     ),
+//     execute: async args => {
+//         const app = new App(config, args);
 
-        app.onError.on(error => process.stdout.write(error.stack));
-        app.onError.on((error: any) => process.exit(error.code));
+//         app.onError.on(error => process.stdout.write(error.stack));
+//         app.onError.on((error: any) => process.exit(error.code));
 
-        await app.init();
-        await app.load(...config.get<any[]>(PARAMETER_PUBLIC_ROUTES));
+//         await app.init();
+//         await app.load(...config.get<any[]>(PARAMETER_PUBLIC_ROUTES));
 
-        return app.description;
-    }
-});
+//         return app.description;
+//     }
+// });
 
 commander.set({
     name: 'start',
@@ -116,9 +118,67 @@ commander.set({
 });
 
 commander.set({
+    name: 'request',
+    description: 'sends request to the server',
+    parameters: new CoreJS.ParameterList(
+        new CoreJS.StringParameter('route', 'of the app', null)
+    ),
+    execute: async args => new Promise<string>((resolve, reject) => {
+        const route = args.route || '';
+
+        delete args.route;
+
+        const params = CoreJS.URLArgsToString(args);
+        const path = params
+            ? `/${route}?${params}`
+            : `/${route}`;
+
+        const request = HTTP.request({
+            host: config.get(Server.PARAMETER_HOST),
+            port: config.get(Server.PARAMETER_PORT),
+            path,
+            method: 'GET'
+        }, response => {
+            let data = '';
+
+            response.on('error', reject);
+            response.on('data', chunk => data += chunk);
+            response.on('close', () => {
+                switch (response.statusCode) {
+                    case CoreJS.ResponseCode.OK:
+                        resolve(data.toString());
+                        break;
+
+                    default:
+                        resolve(`Error ${response.statusCode}: ${data.toString()}`);
+                        break;
+                }
+            });
+        });
+
+        request.on('error', reject);
+        request.end();
+    })
+});
+
+commander.set({
     name: 'config',
     description: "returns the config",
-    execute: async () => config.serialize()
+    parameters: new CoreJS.ParameterList(
+        new CoreJS.StringParameter('type', 'serialization type', null),
+        new CoreJS.NumberParameter('space', 'serialization option space', null),
+        new CoreJS.StringParameter('write', 'writes the config to specific file path', null)
+    ),
+    execute: async args => {
+        const data = config.serialize(args.type, args);
+
+        if (!args.write)
+            return data;
+
+        FS.writeFileSync(args.write, data);
+
+        return `config written to '${args.write}'`;
+    }
 });
 
 commander
