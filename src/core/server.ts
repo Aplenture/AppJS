@@ -128,8 +128,10 @@ export class Server {
 
         let result = this.app.description;
 
-        result += '\nAllowed Request Headers:\n';
-        result += this.allowedRequestHeaders.join('\n');
+        if (this.allowedRequestHeaders.length) {
+            result += '\nAllowed Request Headers:\n';
+            result += this.allowedRequestHeaders.join('\n');
+        }
 
         return result;
     }
