@@ -52,15 +52,15 @@ export class Server {
     ) {
         const defaultResponseHeaders = Object.assign({}, config.get(Server.PARAMETER_RESPONSE_HEADERS));
 
-        defaultResponseHeaders[CoreJS.ResponseHeader.AllowHeaders] = config.get<string[]>(Server.PARAMETER_ALLOWED_REQUEST_HEADERS).join(',');
-        defaultResponseHeaders[CoreJS.ResponseHeader.AllowOrigin] = config.get<string[]>(Server.PARAMETER_ALLOWED_ORIGINS).join(',');
-
         this.responseHeaders = defaultResponseHeaders;
-        this.allowedRequestHeaders = defaultResponseHeaders[CoreJS.ResponseHeader.AllowHeaders];
+        this.allowedRequestHeaders = config.get<string[]>(Server.PARAMETER_ALLOWED_REQUEST_HEADERS);
+        this.allowedOrigins = config.get<string[]>(Server.PARAMETER_ALLOWED_ORIGINS)
 
-        this.allowedOrigins = defaultResponseHeaders[CoreJS.ResponseHeader.AllowOrigin]
-            ? defaultResponseHeaders[CoreJS.ResponseHeader.AllowOrigin]
-            : ['*'];
+        if (0 == this.allowedOrigins.length)
+            this.allowedOrigins = ['*'];
+
+        defaultResponseHeaders[CoreJS.ResponseHeader.AllowHeaders] = this.allowedRequestHeaders.join(',');
+        defaultResponseHeaders[CoreJS.ResponseHeader.AllowOrigin] = this.allowedOrigins.join(',');
 
         this.textInfoResponse = new CoreJS.TextResponse(this.createInfos(false));
         this.jsonInfoResponse = new CoreJS.Response(this.createInfos(true), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
