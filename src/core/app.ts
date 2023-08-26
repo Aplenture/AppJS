@@ -8,15 +8,18 @@
 import * as CoreJS from "corejs";
 import * as ModuleJS from "modulejs";
 
-interface Route {
-    readonly name: string;
+interface RouteData {
+    readonly description?: string;
     readonly paths: readonly string[];
 }
 
-interface RouteData {
-    readonly module: ModuleJS.Module<any, any, any>;
-    readonly command: string;
-    readonly args: NodeJS.ReadOnlyDict<any>;
+interface Route {
+    readonly description: string;
+    readonly paths: readonly {
+        readonly module: ModuleJS.Module<any, any, any>;
+        readonly command: string;
+        readonly args: NodeJS.ReadOnlyDict<any>;
+    }[];
 }
 
 export class App {
@@ -49,7 +52,7 @@ export class App {
     private readonly modules: readonly ModuleJS.Module<any, any, any>[] = [];
     private readonly invalidRouteResponse: CoreJS.ErrorResponse;
 
-    private _routes: NodeJS.Dict<readonly RouteData[]> = {};
+    private _routes: NodeJS.Dict<Route> = {};
 
     private _description: string;
     private _descriptionResponse: CoreJS.TextResponse;
@@ -84,7 +87,7 @@ export class App {
     public get version(): string { return this.config.get(App.PARAMETER_VERSION); }
     public get author(): string { return this.config.get(App.PARAMETER_AUTHOR); }
     public get description(): string { return this._description; }
-    public get routes(): NodeJS.ReadOnlyDict<readonly RouteData[]> { return this._routes; }
+    public get routes(): NodeJS.ReadOnlyDict<Route> { return this._routes; }
 
     public async init() {
         this.onMessage.emit(this, `initializing app '${this.name}'`);
@@ -108,44 +111,51 @@ export class App {
         }));
     }
 
-    public async load(...routes: readonly Route[]) {
+    public async load(routes: NodeJS.ReadOnlyDict<RouteData>) {
         this.onMessage.emit(this, `loading app '${this.name}'`);
 
         try {
-            routes.forEach((data, routeIndex) => {
-                if (!data.name)
+            Object.keys(routes).forEach((name, routeIndex) => {
+                const data = routes[name];
+
+                if (!name)
                     throw new Error(`route at index '${routeIndex}' has invalid name`);
 
-                this.onMessage.emit(this, `loading app route '${data.name}'`);
+                this.onMessage.emit(this, `loading app route '${name}'`);
 
                 if (!data.paths || !data.paths.length)
-                    throw new Error(`route '${data.name}' needs to have at least one path`);
+                    throw new Error(`route '${name}' needs to have at least one path`);
 
-                this._routes[data.name.toLowerCase()] = data.paths.map((path, pathIndex) => {
-                    const split = path.split(' ');
+                const description = data.description || '';
 
-                    if (!split[0])
-                        throw new Error(`missing module name of route '${data.name}' at path index '${pathIndex}'`)
+                this._routes[name.toLowerCase()] = {
+                    description,
+                    paths: data.paths.map((path, pathIndex) => {
+                        const split = path.split(' ');
 
-                    const moduleName = split[0].toLowerCase();
-                    const module = this.modules.find(module => module.name.toLowerCase() === moduleName);
+                        if (!split[0])
+                            throw new Error(`missing module name of route '${name}' at path index '${pathIndex}'`)
 
-                    if (!module)
-                        throw new Error(`module with name '${split[0]}' does not exist`);
+                        const moduleName = split[0].toLowerCase();
+                        const module = this.modules.find(module => module.name.toLowerCase() === moduleName);
 
-                    const command = split[1];
+                        if (!module)
+                            throw new Error(`module with name '${split[0]}' does not exist`);
 
-                    if (!command)
-                        throw new Error(`missing command of route '${data.name}' at path index '${pathIndex}'`)
+                        const command = split[1];
 
-                    const args = CoreJS.parseArgsFromString(split.slice(2).join(' '));
+                        if (!command)
+                            throw new Error(`missing command of route '${name}' at path index '${pathIndex}'`)
 
-                    return {
-                        module,
-                        command,
-                        args
-                    };
-                });
+                        const args = CoreJS.parseArgsFromString(split.slice(2).join(' '));
+
+                        return {
+                            module,
+                            command,
+                            args
+                        };
+                    })
+                };
             });
         } catch (error) {
             this.onError.emit(this, error);
@@ -165,7 +175,7 @@ export class App {
             return this.invalidRouteResponse;
 
         try {
-            for (let i = 0, d = routeData[i], r; i < routeData.length; ++i, d = routeData[i])
+            for (let i = 0, d = routeData.paths[i], r; i < routeData.paths.length; ++i, d = routeData[i])
                 if (r = await d.module.execute(d.command, Object.assign(args, d.args)))
                     return r;
         } catch (error) {
@@ -184,7 +194,7 @@ export class App {
             this._description += '\n' + this.config.get(App.PARAMETER_DESCRIPTION) + '\n';
 
         this._description += '\nRoutes:\n';
-        Object.keys(this._routes).forEach(route => this._description += route + '\n');
+        this._description += Object.keys(this._routes).map(route => `${route} - ${this._routes[route].description}`).join('\n');
 
         this._descriptionResponse = new CoreJS.TextResponse(this._description);
     }

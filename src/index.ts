@@ -35,17 +35,9 @@ const commander = new CoreJS.Commander();
 const infos: any = CoreJS.loadConfig('package.json');
 const commandLine = process.argv.slice(2).join(' ');
 
-// add public app routes parameter to config
-config.add(new CoreJS.ArrayParameter<string>(PARAMETER_PUBLIC_ROUTES, 'all routes which are executable from the server', new CoreJS.DictionaryParameter('', '', [
-    new CoreJS.StringParameter('name', 'name of route'),
-    new CoreJS.ArrayParameter('paths', 'all maodules and commands to call on this route (i.e. "my_module_name ping")', new CoreJS.StringParameter('', ''))
-]), []));
-
-// add private app routes parameter to config
-config.add(new CoreJS.ArrayParameter<string>(PARAMETER_PRIVATE_ROUTES, 'all routes which are executable only from cli', new CoreJS.DictionaryParameter('', '', [
-    new CoreJS.StringParameter('name', 'name of route'),
-    new CoreJS.ArrayParameter('paths', 'all maodules and commands to call on this route (i.e. "my_module_name ping")', new CoreJS.StringParameter('', ''))
-]), []));
+// add routes parameters to config
+config.add(new CoreJS.DictionaryParameter(PARAMETER_PUBLIC_ROUTES, 'all routes which are executable from the server', undefined, {}));
+config.add(new CoreJS.DictionaryParameter(PARAMETER_PRIVATE_ROUTES, 'all routes which are executable only from cli', undefined, {}));
 
 log.write('loading package.json');
 config.set(App.PARAMETER_VERSION, infos.version);
@@ -91,7 +83,7 @@ commander.set({
         server.onError.on(error => log.error(error));
 
         await app.init();
-        await app.load(...config.get<any[]>(PARAMETER_PUBLIC_ROUTES));
+        await app.load(config.get(PARAMETER_PUBLIC_ROUTES));
         await server.start();
 
         return "server stopped";
@@ -110,10 +102,8 @@ commander.set({
         app.onError.on(error => log.error(error));
 
         await app.init();
-        await app.load(
-            ...config.get<any[]>(PARAMETER_PUBLIC_ROUTES),
-            ...config.get<any[]>(PARAMETER_PRIVATE_ROUTES)
-        );
+        await app.load(config.get(PARAMETER_PUBLIC_ROUTES));
+        await app.load(config.get(PARAMETER_PRIVATE_ROUTES));
 
         const response = await app.execute(route, args);
 
