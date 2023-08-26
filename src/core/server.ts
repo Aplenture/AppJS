@@ -162,7 +162,7 @@ export class Server {
 
         const ip = request.socket.remoteAddress;
         const url = new URL(request.url, 'http://' + request.headers.host + '/');
-        const command = url.pathname.substring(1);
+        const route = url.pathname.substring(1);
         const args: any = {};
 
         // parse url args
@@ -176,8 +176,8 @@ export class Server {
         // parse args by allowed request headers
         this.allowedRequestHeaders.forEach(key => args[key] = request.headers[key]);
 
-        const result: CoreJS.Response = command
-            ? await this.app.execute(command, args)
+        const result: CoreJS.Response = route
+            ? await this.app.execute(route, args)
             : args.json
                 ? this.jsonInfoResponse
                 : this.textInfoResponse;
