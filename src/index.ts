@@ -15,10 +15,17 @@ import { App, Server } from "./core";
 const PARAMETER_PUBLIC_ROUTES = 'publicRoutes';
 const PARAMETER_PRIVATE_ROUTES = 'privateRoutes';
 
+const command = process.argv[2];
+const route = process.argv[3] && 0 != process.argv[3].indexOf('-')
+    ? process.argv[3]
+    : '';
+
+const args = CoreJS.parseArgsFromString(process.argv.slice(route ? 4 : 3).join(' '));
+
 process.on('exit', code => code && log.write("exit with code " + code));
-process.on('SIGINT', () => process.exit());
-process.on('SIGUSR1', () => process.exit());
-process.on('SIGUSR2', () => process.exit());
+process.on('SIGINT', () => log.close().then(() => process.exit()));
+process.on('SIGUSR1', () => log.close().then(() => process.exit()));
+process.on('SIGUSR2', () => log.close().then(() => process.exit()));
 process.on('uncaughtException', error => log.error(error));
 process.on('unhandledRejection', reason => log.error(reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
 
@@ -47,7 +54,7 @@ log.write('loading config.json');
 config.deserialize(CoreJS.loadConfig());
 
 log.write('loading process args');
-config.deserialize(CoreJS.Args);
+config.deserialize(args);
 
 // commander.set({
 //     name: 'help',
@@ -94,9 +101,6 @@ commander.set({
 commander.set({
     name: 'exec',
     description: 'executes public and private commands',
-    parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('command', 'will be executed', '')
-    ),
     execute: async args => {
         const app = new App(config, args);
 
@@ -111,7 +115,7 @@ commander.set({
             ...config.get<any[]>(PARAMETER_PRIVATE_ROUTES)
         );
 
-        const response = await app.execute(args.command, args);
+        const response = await app.execute(route, args);
 
         return response.data;
     }
@@ -120,14 +124,7 @@ commander.set({
 commander.set({
     name: 'request',
     description: 'sends request to the server',
-    parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('route', 'of the app', null)
-    ),
     execute: async args => new Promise<string>((resolve, reject) => {
-        const route = args.route || '';
-
-        delete args.route;
-
         const params = CoreJS.URLArgsToString(args);
         const path = params
             ? `/${route}?${params}`
@@ -167,13 +164,17 @@ commander.set({
     parameters: new CoreJS.ParameterList(
         new CoreJS.StringParameter('type', 'serialization type', null),
         new CoreJS.NumberParameter('space', 'serialization option space', null),
-        new CoreJS.StringParameter('write', 'writes the config to specific file path', null)
+        new CoreJS.StringParameter('write', 'writes the config to specific file path', null),
+        new CoreJS.BoolParameter('overwrite', 'if true, existing config will be overwritten', false)
     ),
     execute: async args => {
-        const data = config.serialize(args.type, args);
+        const data = config.serialize(args.type || CoreJS.SerializationType.JSON, args);
 
         if (!args.write)
             return data;
+
+        if (FS.existsSync(args.write) && !args.overwrite)
+            return `config at '${args.write}' exists already`;
 
         FS.writeFileSync(args.write, data);
 
@@ -182,7 +183,8 @@ commander.set({
 });
 
 commander
-    .executeLine(commandLine)
+    .execute(command, args)
     .then(result => process.stdout.write(result))
     .catch(error => process.stdout.write(error.stack))
-    .then(() => process.exit());
+    .then(() => log.close())
+    .then(() => process.exit()); 

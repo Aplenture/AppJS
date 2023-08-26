@@ -122,7 +122,7 @@ export class Server {
             version: this.app.version,
             author: this.app.author,
             description: this.app.description,
-            routes: this.app.routes.map(route => route.name),
+            routes: Object.keys(this.app.routes),
             allowedRequestHeaders: this.allowedRequestHeaders
         });
 

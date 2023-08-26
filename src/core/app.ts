@@ -8,17 +8,15 @@
 import * as CoreJS from "corejs";
 import * as ModuleJS from "modulejs";
 
-interface RouteData {
+interface Route {
     readonly name: string;
     readonly paths: readonly string[];
 }
 
-interface Route {
-    readonly name: string;
-    readonly paths: readonly {
-        readonly module: ModuleJS.Module<any, any, any>;
-        readonly command: string;
-    }[];
+interface RouteData {
+    readonly module: ModuleJS.Module<any, any, any>;
+    readonly command: string;
+    readonly args: NodeJS.ReadOnlyDict<any>;
 }
 
 export class App {
@@ -34,10 +32,10 @@ export class App {
 
     public static readonly Parameters: readonly CoreJS.Parameter<any>[] = [
         new CoreJS.BoolParameter(App.PARAMETER_DEBUG, 'enables/disables debug mode', false),
-        new CoreJS.StringParameter(App.PARAMETER_NAME, 'name of the app'),
+        new CoreJS.StringParameter(App.PARAMETER_NAME, 'name of the app', '<my_app_name>'),
         new CoreJS.StringParameter(App.PARAMETER_VERSION, 'version of the app', '1.0'),
-        new CoreJS.StringParameter(App.PARAMETER_AUTHOR, 'author of the app', ''),
-        new CoreJS.StringParameter(App.PARAMETER_DESCRIPTION, 'description of the app', ''),
+        new CoreJS.StringParameter(App.PARAMETER_AUTHOR, 'author of the app', '<author_name>'),
+        new CoreJS.StringParameter(App.PARAMETER_DESCRIPTION, 'description of the app', '<my_app_description>'),
         new CoreJS.ArrayParameter<string>(App.PARAMETER_MODULES, 'installed app modules', new CoreJS.DictionaryParameter('', '', [
             new CoreJS.StringParameter(App.PARAMETER_CLASS, 'class name of the module'),
             new CoreJS.StringParameter(App.PARAMETER_PATH, 'to the module class'),
@@ -45,19 +43,22 @@ export class App {
         ]), [])
     ];
 
-    public static readonly InvalidRouteResponse = new CoreJS.ErrorResponse(CoreJS.ResponseCode.Forbidden, '#_invalid_route');
-
     public readonly onMessage = new CoreJS.Event<App, string>('App.onMessage');
     public readonly onError = new CoreJS.Event<App, Error>('App.onError');
 
     private readonly modules: readonly ModuleJS.Module<any, any, any>[] = [];
+    private readonly invalidRouteResponse: CoreJS.ErrorResponse;
 
-    private _routes: readonly Route[] = [];
+    private _routes: NodeJS.Dict<readonly RouteData[]> = {};
 
     private _description: string;
     private _descriptionResponse: CoreJS.TextResponse;
 
-    constructor(public readonly config: CoreJS.Config, args: NodeJS.ReadOnlyDict<any> = CoreJS.Args) {
+    constructor(public readonly config: CoreJS.Config, args: NodeJS.ReadOnlyDict<any> = {}) {
+        this.invalidRouteResponse = this.debug
+            ? new CoreJS.ErrorResponse(CoreJS.ResponseCode.Forbidden, '#_invalid_route')
+            : CoreJS.RESPONSE_NO_CONTENT;
+
         this.modules = config.get<ReadonlyArray<CoreJS.LoadModuleConfig & { readonly options?: any; }>>(App.PARAMETER_MODULES).map(data => {
             try {
                 const module = CoreJS.loadModule<ModuleJS.Module<any, any, any>>(data, args, data.options);
@@ -83,12 +84,16 @@ export class App {
     public get version(): string { return this.config.get(App.PARAMETER_VERSION); }
     public get author(): string { return this.config.get(App.PARAMETER_AUTHOR); }
     public get description(): string { return this._description; }
-    public get routes(): readonly Route[] { return this._routes; }
+    public get routes(): NodeJS.ReadOnlyDict<readonly RouteData[]> { return this._routes; }
 
     public async init() {
         this.onMessage.emit(this, `initializing app '${this.name}'`);
 
-        await this.modules.forEach(module => module.init());
+        await Promise.all(this.modules.map(module => {
+            this.onMessage.emit(this, `initializing module '${module.name}'`);
+
+            return module.init();
+        }));
 
         this.updateDescription();
     }
@@ -96,14 +101,18 @@ export class App {
     public async deinit() {
         this.onMessage.emit(this, `deinitializing app '${this.name}'`);
 
-        await this.modules.forEach(module => module.deinit());
+        await Promise.all(this.modules.map(module => {
+            this.onMessage.emit(this, `deinitializing module '${module.name}'`);
+
+            return module.deinit();
+        }));
     }
 
-    public async load(...routes: readonly RouteData[]) {
+    public async load(...routes: readonly Route[]) {
         this.onMessage.emit(this, `loading app '${this.name}'`);
 
         try {
-            this._routes = this.routes.concat(...routes.map((data, routeIndex) => {
+            routes.forEach((data, routeIndex) => {
                 if (!data.name)
                     throw new Error(`route at index '${routeIndex}' has invalid name`);
 
@@ -112,32 +121,32 @@ export class App {
                 if (!data.paths || !data.paths.length)
                     throw new Error(`route '${data.name}' needs to have at least one path`);
 
-                return {
-                    name: data.name,
-                    paths: data.paths.map((path, pathIndex) => {
-                        const split = path.split(' ');
+                this._routes[data.name.toLowerCase()] = data.paths.map((path, pathIndex) => {
+                    const split = path.split(' ');
 
-                        if (!split[0])
-                            throw new Error(`missing module name for route at index '${routeIndex}' and path at index '${pathIndex}'`)
+                    if (!split[0])
+                        throw new Error(`missing module name of route '${data.name}' at path index '${pathIndex}'`)
 
-                        const moduleName = split[0].toLowerCase();
-                        const module = this.modules.find(module => module.name.toLowerCase() === moduleName);
+                    const moduleName = split[0].toLowerCase();
+                    const module = this.modules.find(module => module.name.toLowerCase() === moduleName);
 
-                        if (!module)
-                            throw new Error(`module with name '${split[0]}' does not exist`);
+                    if (!module)
+                        throw new Error(`module with name '${split[0]}' does not exist`);
 
-                        const command = split[1];
+                    const command = split[1];
 
-                        if (!command)
-                            throw new Error(`missing command for module route at index '${routeIndex}' and path at index '${pathIndex}'`)
+                    if (!command)
+                        throw new Error(`missing command of route '${data.name}' at path index '${pathIndex}'`)
 
-                        return {
-                            module,
-                            command
-                        };
-                    })
-                };
-            }));
+                    const args = CoreJS.parseArgsFromString(split.slice(2).join(' '));
+
+                    return {
+                        module,
+                        command,
+                        args
+                    };
+                });
+            });
         } catch (error) {
             this.onError.emit(this, error);
             throw error;
@@ -150,19 +159,14 @@ export class App {
         if (!route)
             return this._descriptionResponse;
 
-        route = route.toLowerCase();
-
-        const routeData = this._routes.find(tmp => tmp.name === route);
+        const routeData = this._routes[route.toLowerCase()];
 
         if (!routeData)
-            if (this.debug)
-                return App.InvalidRouteResponse
-            else
-                return CoreJS.RESPONSE_NO_CONTENT;
+            return this.invalidRouteResponse;
 
         try {
-            for (let i = 0, d = routeData.paths[i], r; i < routeData.paths.length; ++i, d = routeData.paths[i])
-                if (r = await d.module.execute(d.command, args))
+            for (let i = 0, d = routeData[i], r; i < routeData.length; ++i, d = routeData[i])
+                if (r = await d.module.execute(d.command, Object.assign(args, d.args)))
                     return r;
         } catch (error) {
             this.onError.emit(this, error);
@@ -180,7 +184,7 @@ export class App {
             this._description += '\n' + this.config.get(App.PARAMETER_DESCRIPTION) + '\n';
 
         this._description += '\nRoutes:\n';
-        this._routes.forEach(route => this._description += route.name + '\n');
+        Object.keys(this._routes).forEach(route => this._description += route + '\n');
 
         this._descriptionResponse = new CoreJS.TextResponse(this._description);
     }
