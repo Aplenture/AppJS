@@ -93,6 +93,12 @@ export class App {
         this.updateDescription();
     }
 
+    public async deinit() {
+        this.onMessage.emit(this, `deinitializing app '${this.name}'`);
+
+        await this.modules.forEach(module => module.deinit());
+    }
+
     public async load(...routes: readonly RouteData[]) {
         this.onMessage.emit(this, `loading app '${this.name}'`);
 
