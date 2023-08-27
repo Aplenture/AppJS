@@ -90,10 +90,8 @@ export class App {
     public get routes(): NodeJS.ReadOnlyDict<Route> { return this._routes; }
 
     public async init() {
-        this.onMessage.emit(this, `initializing app '${this.name}'`);
-
         await Promise.all(this.modules.map(module => {
-            this.onMessage.emit(this, `initializing module '${module.name}'`);
+            this.onMessage.emit(this, `init module ${this.name}/${module.name}`);
 
             return module.init();
         }));
@@ -102,18 +100,14 @@ export class App {
     }
 
     public async deinit() {
-        this.onMessage.emit(this, `deinitializing app '${this.name}'`);
-
         await Promise.all(this.modules.map(module => {
-            this.onMessage.emit(this, `deinitializing module '${module.name}'`);
+            this.onMessage.emit(this, `deinit module ${this.name}/${module.name}`);
 
             return module.deinit();
         }));
     }
 
     public async load(routes: NodeJS.ReadOnlyDict<RouteData>) {
-        this.onMessage.emit(this, `loading app '${this.name}'`);
-
         try {
             Object.keys(routes).forEach((name, routeIndex) => {
                 const data = routes[name];
@@ -121,7 +115,7 @@ export class App {
                 if (!name)
                     throw new Error(`route at index '${routeIndex}' has invalid name`);
 
-                this.onMessage.emit(this, `loading app route '${name}'`);
+                this.onMessage.emit(this, `loading route ${this.name}/${name}`);
 
                 if (!data.paths || !data.paths.length)
                     throw new Error(`route '${name}' needs to have at least one path`);

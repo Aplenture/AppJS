@@ -12,6 +12,7 @@ import * as HTTP from "http";
 import * as ModuleJS from "modulejs";
 import { App, Server } from "./core";
 
+const PARAMETER_LOGFILE = 'logfile';
 const PARAMETER_PUBLIC_ROUTES = 'publicRoutes';
 const PARAMETER_PRIVATE_ROUTES = 'privateRoutes';
 
@@ -21,6 +22,19 @@ const route = process.argv[3] && 0 != process.argv[3].indexOf('-')
     : '';
 
 const args = CoreJS.parseArgsFromString(process.argv.slice(route ? 4 : 3).join(' '));
+const commander = new CoreJS.Commander();
+const commandLine = process.argv.slice(2).join(' ');
+const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...ModuleJS.GlobalParameters);
+const infos = CoreJS.loadConfig('package.json');
+
+config.add(new CoreJS.StringParameter(PARAMETER_LOGFILE, 'file path of log file', './log.log'));
+config.add(new CoreJS.DictionaryParameter(PARAMETER_PUBLIC_ROUTES, 'all routes which are executable from the server', undefined, {}));
+config.add(new CoreJS.DictionaryParameter(PARAMETER_PRIVATE_ROUTES, 'all routes which are executable only from cli', undefined, {}));
+config.set(App.PARAMETER_VERSION, infos.version);
+config.deserialize(CoreJS.loadConfig());
+config.deserialize(args);
+
+const log = BackendJS.Log.createFileLog(config.get(PARAMETER_LOGFILE));
 
 process.on('exit', code => code && log.write("exit with code " + code));
 process.on('SIGINT', () => log.close().then(() => process.exit()));
@@ -28,25 +42,6 @@ process.on('SIGUSR1', () => log.close().then(() => process.exit()));
 process.on('SIGUSR2', () => log.close().then(() => process.exit()));
 process.on('uncaughtException', error => log.error(error));
 process.on('unhandledRejection', reason => log.error(reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
-
-const log = BackendJS.Log.createFileLog('./log.log');
-const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...ModuleJS.GlobalParameters);
-const commander = new CoreJS.Commander();
-const infos: any = CoreJS.loadConfig('package.json');
-const commandLine = process.argv.slice(2).join(' ');
-
-// add routes parameters to config
-config.add(new CoreJS.DictionaryParameter(PARAMETER_PUBLIC_ROUTES, 'all routes which are executable from the server', undefined, {}));
-config.add(new CoreJS.DictionaryParameter(PARAMETER_PRIVATE_ROUTES, 'all routes which are executable only from cli', undefined, {}));
-
-log.write('loading package.json');
-config.set(App.PARAMETER_VERSION, infos.version);
-
-log.write('loading config.json');
-config.deserialize(CoreJS.loadConfig());
-
-log.write('loading process args');
-config.deserialize(args);
 
 // commander.set({
 //     name: 'help',
@@ -98,8 +93,7 @@ commander.set({
 
         process.title = `${app.name} ${commandLine}`;
 
-        app.onMessage.on(message => log.write(message));
-        app.onError.on(error => log.error(error));
+        app.onError.on(error => process.stdout.write(error.stack + '\n'));
 
         await app.init();
         await app.load(config.get(PARAMETER_PUBLIC_ROUTES));
@@ -149,7 +143,7 @@ commander.set({
 });
 
 commander.set({
-    name: 'config',
+    name: 'config.get',
     description: "returns the config",
     parameters: new CoreJS.ParameterList(
         new CoreJS.StringParameter('type', 'serialization type', null),
@@ -169,6 +163,16 @@ commander.set({
         FS.writeFileSync(args.write, data);
 
         return `config written to '${args.write}'`;
+    }
+});
+
+commander.set({
+    name: 'config.clear',
+    description: "clears the config file",
+    execute: async args => {
+        await BackendJS.Log.clear(config.get(PARAMETER_LOGFILE));
+
+        return `config cleared`;
     }
 });
 

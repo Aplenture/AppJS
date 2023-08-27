@@ -12,12 +12,13 @@
         "test": "mocha -r ts-node/register 'tests/**/*.ts' --timeout 6000",
         "postinstall": "npm run build; node dist/index config --write config.json --space 4",
         "start": "node dist/index start",
+        "clear": "node dist/index config.clear",
         "help": "node dist/index help",
         "exec": "node dist/index exec",
         "request": "node dist/index request",
-        "config": "node dist/index config",
-        "reset": "node dist/index reset",
-        "update": "node dist/index update"
+        "config": "node dist/index config.get",
+        "reset": "node dist/index exec reset",
+        "update": "node dist/index exec update"
     },
     "repository": {
         "type": "git",
