@@ -62,9 +62,9 @@ export class App {
             ? new CoreJS.ErrorResponse(CoreJS.ResponseCode.Forbidden, '#_invalid_route')
             : CoreJS.RESPONSE_NO_CONTENT;
 
-        this.modules = config.get<ReadonlyArray<CoreJS.LoadModuleConfig & { readonly options?: any; }>>(App.PARAMETER_MODULES).map(data => {
+        this.modules = config.get<ReadonlyArray<BackendJS.LoadModuleConfig & { readonly options?: any; }>>(App.PARAMETER_MODULES).map(data => {
             try {
-                const module = CoreJS.loadModule<BackendJS.Module.Module<any, any, any>>(data, args, data.options);
+                const module = BackendJS.loadModule<BackendJS.Module.Module<any, any, any>>(data, args, data.options);
 
                 module.onMessage.on(message => this.onMessage.emit(this, message));
 

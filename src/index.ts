@@ -24,13 +24,13 @@ const args = CoreJS.parseArgsFromString(process.argv.slice(route ? 4 : 3).join('
 const commander = new CoreJS.Commander();
 const commandLine = process.argv.slice(2).join(' ');
 const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...BackendJS.Module.GlobalParameters);
-const infos = CoreJS.loadConfig('package.json');
+const infos = BackendJS.loadConfig('package.json');
 
 config.add(new CoreJS.StringParameter(PARAMETER_LOGFILE, 'file path of log file', './log.log'));
 config.add(new CoreJS.DictionaryParameter(PARAMETER_PUBLIC_ROUTES, 'all routes which are executable from the server', undefined, {}));
 config.add(new CoreJS.DictionaryParameter(PARAMETER_PRIVATE_ROUTES, 'all routes which are executable only from cli', undefined, {}));
 config.set(App.PARAMETER_VERSION, infos.version);
-config.deserialize(CoreJS.loadConfig());
+config.deserialize(BackendJS.loadConfig());
 config.deserialize(args);
 
 const log = BackendJS.Log.Log.createFileLog(config.get(PARAMETER_LOGFILE));
