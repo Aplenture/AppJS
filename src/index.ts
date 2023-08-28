@@ -9,7 +9,6 @@ import * as BackendJS from "backendjs";
 import * as CoreJS from "corejs";
 import * as FS from "fs";
 import * as HTTP from "http";
-import * as ModuleJS from "modulejs";
 import { App, Server } from "./core";
 
 const PARAMETER_LOGFILE = 'logfile';
@@ -24,7 +23,7 @@ const route = process.argv[3] && 0 != process.argv[3].indexOf('-')
 const args = CoreJS.parseArgsFromString(process.argv.slice(route ? 4 : 3).join(' '));
 const commander = new CoreJS.Commander();
 const commandLine = process.argv.slice(2).join(' ');
-const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...ModuleJS.GlobalParameters);
+const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...BackendJS.Module.GlobalParameters);
 const infos = CoreJS.loadConfig('package.json');
 
 config.add(new CoreJS.StringParameter(PARAMETER_LOGFILE, 'file path of log file', './log.log'));
@@ -34,7 +33,7 @@ config.set(App.PARAMETER_VERSION, infos.version);
 config.deserialize(CoreJS.loadConfig());
 config.deserialize(args);
 
-const log = BackendJS.Log.createFileLog(config.get(PARAMETER_LOGFILE));
+const log = BackendJS.Log.Log.createFileLog(config.get(PARAMETER_LOGFILE));
 
 process.on('exit', code => code && log.write("exit with code " + code));
 process.on('SIGINT', () => log.close().then(() => process.exit()));
@@ -170,7 +169,7 @@ commander.set({
     name: 'config.clear',
     description: "clears the config file",
     execute: async args => {
-        await BackendJS.Log.clear(config.get(PARAMETER_LOGFILE));
+        await BackendJS.Log.Log.clear(config.get(PARAMETER_LOGFILE));
 
         return `config cleared`;
     }

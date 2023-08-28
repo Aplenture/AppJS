@@ -43,6 +43,6 @@
         "typescript": "^4.9.4"
     },
     "dependencies": {
-        "modulejs": "github:Aplenture/ModuleJS"
+        "backendjs": "github:Aplenture/BackendJS"
     }
 }

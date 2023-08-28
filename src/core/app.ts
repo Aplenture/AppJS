@@ -5,8 +5,8 @@
  * MIT License https://github.com/Aplenture/AppJS/blob/main/LICENSE
  */
 
+import * as BackendJS from "backendjs";
 import * as CoreJS from "corejs";
-import * as ModuleJS from "modulejs";
 
 interface RouteData {
     readonly description?: string;
@@ -16,7 +16,7 @@ interface RouteData {
 interface Route {
     readonly description: string;
     readonly paths: readonly {
-        readonly module: ModuleJS.Module<any, any, any>;
+        readonly module: BackendJS.Module.Module<any, any, any>;
         readonly command: string;
         readonly args: NodeJS.ReadOnlyDict<any>;
     }[];
@@ -49,7 +49,7 @@ export class App {
     public readonly onMessage = new CoreJS.Event<App, string>('App.onMessage');
     public readonly onError = new CoreJS.Event<App, Error>('App.onError');
 
-    private readonly modules: readonly ModuleJS.Module<any, any, any>[] = [];
+    private readonly modules: readonly BackendJS.Module.Module<any, any, any>[] = [];
     private readonly invalidRouteResponse: CoreJS.ErrorResponse;
 
     private _routes: NodeJS.Dict<Route> = {};
@@ -64,7 +64,7 @@ export class App {
 
         this.modules = config.get<ReadonlyArray<CoreJS.LoadModuleConfig & { readonly options?: any; }>>(App.PARAMETER_MODULES).map(data => {
             try {
-                const module = CoreJS.loadModule<ModuleJS.Module<any, any, any>>(data, args, data.options);
+                const module = CoreJS.loadModule<BackendJS.Module.Module<any, any, any>>(data, args, data.options);
 
                 module.onMessage.on(message => this.onMessage.emit(this, message));
 
