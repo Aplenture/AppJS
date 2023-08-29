@@ -175,6 +175,27 @@ commander.set({
 });
 
 commander.set({
+    name: 'config.create',
+    description: "writes config to file",
+    parameters: new CoreJS.ParameterList(
+        new CoreJS.StringParameter('type', 'serialization type', CoreJS.SerializationType.JSON),
+        new CoreJS.NumberParameter('space', 'serialization option space', 4),
+        new CoreJS.StringParameter('path', 'config file path', 'config'),
+        new CoreJS.BoolParameter('force', 'overwrites existing config file', false)
+    ),
+    execute: async args => {
+        const path = `configs/${args.path}.json`;
+
+        if (FS.existsSync(path) && !args.force)
+            return `config file already exist at '${path}'\n`;
+
+        FS.writeFileSync(path, config.serialize(args.type, args));
+
+        return `config written to file at '${path}'\n`;
+    }
+});
+
+commander.set({
     name: 'config.clear',
     description: "clears the config file",
     execute: async args => {
