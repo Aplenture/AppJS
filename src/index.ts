@@ -62,13 +62,16 @@ commander.set({
     name: 'start',
     description: "starts the server",
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('config', 'filepath of additional config', null),
+        new CoreJS.StringParameter('config', 'filepath of additional config', 'server'),
     ),
     execute: async args => {
         // deserialize additional config
-        await commander.execute('config.get', { path: args.config });
+        if (args.config) {
+            process.stdout.write(`load additional config '${args.config}'\n`);
+            await commander.execute('config.get', { path: args.config });
 
-        delete args.config;
+            delete args.config;
+        }
 
         const app = new App(config, args);
         const server = new Server(app, config);
@@ -95,7 +98,7 @@ commander.set({
     name: 'exec',
     description: 'executes public and private commands',
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('config', 'filepath of additional config', null),
+        new CoreJS.StringParameter('config', 'filepath of additional config', 'cli'),
     ),
     execute: async args => {
         // deserialize additional config
@@ -168,9 +171,9 @@ commander.set({
         if (FS.existsSync(path))
             config.deserialize(BackendJS.loadConfig(path));
         else
-            FS.writeFileSync(path, config.serialize(args.type, args));
+            FS.writeFileSync(path, config.serialize(args));
 
-        return config.serialize(args.type, args);
+        return config.serialize(args);
     }
 });
 
@@ -189,7 +192,7 @@ commander.set({
         if (FS.existsSync(path) && !args.force)
             return `config file already exist at '${path}'\n`;
 
-        FS.writeFileSync(path, config.serialize(args.type, args));
+        FS.writeFileSync(path, config.serialize(args));
 
         return `config written to file at '${path}'\n`;
     }

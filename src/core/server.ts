@@ -41,10 +41,9 @@ export class Server {
     private readonly responseHeaders: NodeJS.ReadOnlyDict<HTTP.OutgoingHttpHeader>;
     private readonly allowedOrigins: readonly string[];
 
-    private readonly jsonInfoResponse: CoreJS.Response;
-    private readonly textInfoResponse: CoreJS.Response;
-
     private stopAction: () => void = null;
+    private htmlInfoResponse: CoreJS.Response;
+    private jsonInfoResponse: CoreJS.Response;
 
     constructor(
         public readonly app: App,
@@ -61,9 +60,6 @@ export class Server {
 
         defaultResponseHeaders[CoreJS.ResponseHeader.AllowHeaders] = this.allowedRequestHeaders.join(',');
         defaultResponseHeaders[CoreJS.ResponseHeader.AllowOrigin] = this.allowedOrigins.join(',');
-
-        this.textInfoResponse = new CoreJS.TextResponse(this.createInfos(false));
-        this.jsonInfoResponse = new CoreJS.Response(this.createInfos(true), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
     }
 
     public get isRunning(): boolean { return !!this.stopAction; }
@@ -101,6 +97,9 @@ export class Server {
 
         this.onMessage.emit(this, `server started (debug mode: ${CoreJS.parseFromBool(this.debug)})`);
 
+        this.htmlInfoResponse = new CoreJS.HTMLResponse(this.serialize({ type: CoreJS.SerializationType.HTML }));
+        this.jsonInfoResponse = new CoreJS.Response(this.serialize({ type: CoreJS.SerializationType.JSON }), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
+
         return new Promise<void>(resolve => this.stopAction = () => {
             server.close();
             this.stopAction = null;
@@ -116,17 +115,18 @@ export class Server {
         this.stopAction();
     }
 
-    public createInfos(json = false): string {
-        if (json) return JSON.stringify({
-            name: this.app.name,
-            version: this.app.version,
-            author: this.app.author,
-            description: this.app.description,
-            routes: Object.keys(this.app.routes),
-            allowedRequestHeaders: this.allowedRequestHeaders
-        });
+    public serialize(options?: CoreJS.SerializationOptions): string {
+        if (!options || !options.type)
+            return this.toString();
 
-        let result = this.app.description;
+        return CoreJS.serialize({
+            app: this.app,
+            allowedRequestHeaders: this.allowedRequestHeaders
+        }, options);
+    }
+
+    public toString(): string {
+        let result = this.app.toString();
 
         if (this.allowedRequestHeaders.length) {
             result += '\nAllowed Request Headers:\n';
@@ -180,9 +180,9 @@ export class Server {
 
         const result: CoreJS.Response = route
             ? await this.app.execute(route, args)
-            : args.json
-                ? this.jsonInfoResponse
-                : this.textInfoResponse;
+            : args.html
+                ? this.htmlInfoResponse
+                : this.jsonInfoResponse;
 
         responseHeaders[CoreJS.ResponseHeader.ContentType] = result.type;
 

@@ -15,6 +15,7 @@ interface RouteData {
 
 interface Route {
     readonly description: string;
+    readonly parameters: NodeJS.ReadOnlyDict<any>;
     readonly paths: readonly {
         readonly module: BackendJS.Module.Module<any, any, any>;
         readonly command: string;
@@ -56,12 +57,7 @@ export class App {
 
     private _routes: NodeJS.Dict<Route> = {};
 
-    private _description: string;
-    private _descriptionResponse: CoreJS.TextResponse;
-
     constructor(public readonly config: CoreJS.Config, args: NodeJS.ReadOnlyDict<any> = {}) {
-        const routes = config.get<NodeJS.ReadOnlyDict<RouteData>>(App.PARAMETER_ROUTES);
-
         this.invalidRouteResponse = this.debug
             ? new CoreJS.ErrorResponse(CoreJS.ResponseCode.Forbidden, '#_invalid_route')
             : CoreJS.RESPONSE_NO_CONTENT;
@@ -82,6 +78,28 @@ export class App {
                 throw error;
             }
         });
+    }
+
+    public get name(): string { return this.config.get(App.PARAMETER_NAME); }
+    public get debug(): boolean { return this.config.get(App.PARAMETER_DEBUG); }
+    public get version(): string { return this.config.get(App.PARAMETER_VERSION); }
+    public get author(): string { return this.config.get(App.PARAMETER_AUTHOR); }
+    public get description(): string { return this.config.get(App.PARAMETER_DESCRIPTION); }
+    public get routes(): NodeJS.ReadOnlyDict<Route> { return this._routes; }
+
+    public async init() {
+        const routes = this.config.get<NodeJS.ReadOnlyDict<RouteData>>(App.PARAMETER_ROUTES);
+
+        for (const key in this._routes)
+            delete this._routes[key];
+
+        await Promise.all(this.modules.map(module => {
+            this.onMessage.emit(this, `init module ${this.name}/${module.name}`);
+
+            return module.init();
+        }));
+
+        const moduleDatas = this.modules.map(module => CoreJS.deserialize(module.serialize({ type: CoreJS.SerializationType.JSON })));
 
         Object.keys(routes).forEach((name, routeIndex) => {
             const data = routes[name];
@@ -95,58 +113,64 @@ export class App {
                 throw new Error(`route '${name}' needs to have at least one path`);
 
             const description = data.description || '';
+            const parameters = {};
+            const routeArgs = {};
+
+            const paths = data.paths.map((path, pathIndex) => {
+                const split = path.split(' ');
+
+                if (!split[0])
+                    throw new Error(`missing module name of route '${name}' at path index '${pathIndex}'`)
+
+                const moduleName = split[0].toLowerCase();
+                const module = this.modules.find(module => module.name.toLowerCase() === moduleName);
+
+                if (!module)
+                    throw new Error(`module with name '${split[0]}' does not exist`);
+
+                const command = split[1].toLowerCase();
+
+                if (!command)
+                    throw new Error(`missing command of route '${name}' at path index '${pathIndex}'`);
+
+                if (!module.has(command))
+                    throw new Error(`invalid command '${command}' of route '${name}' at path index '${pathIndex}'`);
+
+                const args = CoreJS.parseArgsFromString(split.slice(2).join(' '));
+                const moduleData = moduleDatas.find(data => data.name.toLowerCase() == moduleName);
+                const commandData = moduleData.commander.commands.find(tmp => tmp.name.toLowerCase() == command);
+
+                // add all command parameters to serialization
+                if (commandData.parameters)
+                    for (const key in commandData.parameters._parameters)
+                        parameters[key] = commandData.parameters._parameters[key];
+
+                for (const key in args)
+                    routeArgs[key] = args[key];
+
+                return {
+                    module,
+                    command,
+                    args
+                };
+            });
+
+            // remove all route args from serialization
+            for (const key in routeArgs)
+                delete parameters[key];
 
             this._routes[name.toLowerCase()] = {
                 description,
-                paths: data.paths.map((path, pathIndex) => {
-                    const split = path.split(' ');
-
-                    if (!split[0])
-                        throw new Error(`missing module name of route '${name}' at path index '${pathIndex}'`)
-
-                    const moduleName = split[0].toLowerCase();
-                    const module = this.modules.find(module => module.name.toLowerCase() === moduleName);
-
-                    if (!module)
-                        throw new Error(`module with name '${split[0]}' does not exist`);
-
-                    const command = split[1];
-
-                    if (!command)
-                        throw new Error(`missing command of route '${name}' at path index '${pathIndex}'`)
-
-                    const args = CoreJS.parseArgsFromString(split.slice(2).join(' '));
-
-                    return {
-                        module,
-                        command,
-                        args
-                    };
-                })
+                parameters,
+                paths
             };
         });
-
-        this.updateDescription();
-    }
-
-    public get name(): string { return this.config.get(App.PARAMETER_NAME); }
-    public get debug(): boolean { return this.config.get(App.PARAMETER_DEBUG); }
-    public get version(): string { return this.config.get(App.PARAMETER_VERSION); }
-    public get author(): string { return this.config.get(App.PARAMETER_AUTHOR); }
-    public get description(): string { return this._description; }
-    public get routes(): NodeJS.ReadOnlyDict<Route> { return this._routes; }
-
-    public async init() {
-        await Promise.all(this.modules.map(module => {
-            this.onMessage.emit(this, `init module ${this.name}/${module.name}`);
-
-            return module.init();
-        }));
-
-        this.updateDescription();
     }
 
     public async deinit() {
+        for (const key in this._routes)
+            delete this._routes[key];
+
         await Promise.all(this.modules.map(module => {
             this.onMessage.emit(this, `deinit module ${this.name}/${module.name}`);
 
@@ -156,7 +180,7 @@ export class App {
 
     public async execute(route?: string, args?: NodeJS.ReadOnlyDict<any>): Promise<CoreJS.Response> {
         if (!route)
-            return this._descriptionResponse;
+            return new CoreJS.TextResponse(this.toString());
 
         const routeData = this._routes[route.toLowerCase()];
 
@@ -176,15 +200,32 @@ export class App {
         }
     }
 
-    private updateDescription() {
-        this._description = `${this.config.get(App.PARAMETER_NAME)} v${this.config.get(App.PARAMETER_VERSION)} by ${this.config.get(App.PARAMETER_AUTHOR)}\n`;
+    public serialize(options?: CoreJS.SerializationOptions): string {
+        if (!options || !options.type)
+            return this.toString();
 
-        if (this.config.has(App.PARAMETER_DESCRIPTION))
-            this._description += '\n' + this.config.get(App.PARAMETER_DESCRIPTION) + '\n';
+        return CoreJS.serialize({
+            name: this.name,
+            version: this.version,
+            author: this.author,
+            description: this.description,
+            routes: Object.keys(this._routes).map(path => ({
+                path,
+                description: this._routes[path].description,
+                parameters: this._routes[path].parameters
+            }))
+        }, options);
+    }
 
-        this._description += '\nRoutes:\n';
-        this._description += Object.keys(this._routes).map(route => `${route} - ${this._routes[route].description}`).join('\n');
+    public toString(): string {
+        let result = `${this.name} v${this.version} by ${this.author}\n`;
 
-        this._descriptionResponse = new CoreJS.TextResponse(this._description);
+        if (this.description)
+            result += '\n' + this.description + '\n';
+
+        result += '\nRoutes:\n';
+        result += Object.keys(this._routes).map(route => `${route} - ${this._routes[route].description}`).join('\n') + '\n';
+
+        return result;
     }
 }
