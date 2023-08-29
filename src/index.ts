@@ -87,7 +87,7 @@ commander.set({
         process.stdout.write('start server\n');
         await server.start();
 
-        return "server stopped";
+        return "server stopped\n";
     }
 });
 
@@ -160,7 +160,7 @@ commander.set({
     parameters: new CoreJS.ParameterList(
         new CoreJS.StringParameter('type', 'serialization type', CoreJS.SerializationType.JSON),
         new CoreJS.NumberParameter('space', 'serialization option space', 4),
-        new CoreJS.StringParameter('path', 'config file path', 'config'),
+        new CoreJS.StringParameter('path', 'config file path', 'config')
     ),
     execute: async args => {
         const path = `configs/${args.path}.json`;
@@ -201,7 +201,7 @@ commander.set({
     execute: async args => {
         await BackendJS.Log.Log.clear(config.get(PARAMETER_LOGFILE));
 
-        return `config cleared`;
+        return `config cleared\n`;
     }
 });
 
