@@ -12,8 +12,6 @@ import * as HTTP from "http";
 import { App, Server } from "./core";
 
 const PARAMETER_LOGFILE = 'logfile';
-const PARAMETER_PUBLIC_ROUTES = 'publicRoutes';
-const PARAMETER_PRIVATE_ROUTES = 'privateRoutes';
 
 const command = process.argv[2];
 const route = process.argv[3] && 0 != process.argv[3].indexOf('-')
@@ -21,16 +19,15 @@ const route = process.argv[3] && 0 != process.argv[3].indexOf('-')
     : '';
 
 const args = CoreJS.parseArgsFromString(process.argv.slice(route ? 4 : 3).join(' '));
+
 const commander = new CoreJS.Commander();
 const commandLine = process.argv.slice(2).join(' ');
 const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...BackendJS.Module.GlobalParameters);
 const infos = BackendJS.loadConfig('package.json');
 
 config.add(new CoreJS.StringParameter(PARAMETER_LOGFILE, 'file path of log file', './log.log'));
-config.add(new CoreJS.DictionaryParameter(PARAMETER_PUBLIC_ROUTES, 'all routes which are executable from the server', undefined, {}));
-config.add(new CoreJS.DictionaryParameter(PARAMETER_PRIVATE_ROUTES, 'all routes which are executable only from cli', undefined, {}));
 config.set(App.PARAMETER_VERSION, infos.version);
-config.deserialize(BackendJS.loadConfig());
+config.deserialize(BackendJS.loadConfig('configs/config.json'));
 config.deserialize(args);
 
 const log = BackendJS.Log.Log.createFileLog(config.get(PARAMETER_LOGFILE));
@@ -64,7 +61,15 @@ process.on('unhandledRejection', reason => log.error(reason instanceof Error ? r
 commander.set({
     name: 'start',
     description: "starts the server",
+    parameters: new CoreJS.ParameterList(
+        new CoreJS.StringParameter('config', 'filepath of additional config', null),
+    ),
     execute: async args => {
+        // deserialize additional config
+        await commander.execute('config.get', { path: args.config });
+
+        delete args.config;
+
         const app = new App(config, args);
         const server = new Server(app, config);
 
@@ -76,8 +81,10 @@ commander.set({
         server.onMessage.on(message => log.write(message));
         server.onError.on(error => log.error(error));
 
+        process.stdout.write('init app\n');
         await app.init();
-        await app.load(config.get(PARAMETER_PUBLIC_ROUTES));
+
+        process.stdout.write('start server\n');
         await server.start();
 
         return "server stopped";
@@ -87,7 +94,15 @@ commander.set({
 commander.set({
     name: 'exec',
     description: 'executes public and private commands',
+    parameters: new CoreJS.ParameterList(
+        new CoreJS.StringParameter('config', 'filepath of additional config', null),
+    ),
     execute: async args => {
+        // deserialize additional config
+        await commander.execute('config.get', { path: args.config });
+
+        delete args.config;
+
         const app = new App(config, args);
 
         process.title = `${app.name} ${commandLine}`;
@@ -95,8 +110,6 @@ commander.set({
         app.onError.on(error => process.stdout.write(error.stack + '\n'));
 
         await app.init();
-        await app.load(config.get(PARAMETER_PUBLIC_ROUTES));
-        await app.load(config.get(PARAMETER_PRIVATE_ROUTES));
 
         const response = await app.execute(route, args);
 
@@ -145,23 +158,19 @@ commander.set({
     name: 'config.get',
     description: "returns the config",
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('type', 'serialization type', null),
-        new CoreJS.NumberParameter('space', 'serialization option space', null),
-        new CoreJS.StringParameter('write', 'writes the config to specific file path', null),
-        new CoreJS.BoolParameter('overwrite', 'if true, existing config will be overwritten', false)
+        new CoreJS.StringParameter('type', 'serialization type', CoreJS.SerializationType.JSON),
+        new CoreJS.NumberParameter('space', 'serialization option space', 4),
+        new CoreJS.StringParameter('path', 'config file path', 'config'),
     ),
     execute: async args => {
-        const data = config.serialize(args.type || CoreJS.SerializationType.JSON, args);
+        const path = `configs/${args.path}.json`;
 
-        if (!args.write)
-            return data;
+        if (FS.existsSync(path))
+            config.deserialize(BackendJS.loadConfig(path));
+        else
+            FS.writeFileSync(path, config.serialize(args.type, args));
 
-        if (FS.existsSync(args.write) && !args.overwrite)
-            return `config at '${args.write}' exists already`;
-
-        FS.writeFileSync(args.write, data);
-
-        return `config written to '${args.write}'`;
+        return config.serialize(args.type, args);
     }
 });
 

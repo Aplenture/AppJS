@@ -32,6 +32,7 @@ export class App {
     public static readonly PARAMETER_CLASS = 'class';
     public static readonly PARAMETER_PATH = 'path';
     public static readonly PARAMETER_OPTIONS = 'options';
+    public static readonly PARAMETER_ROUTES = 'routes';
 
     public static readonly Parameters: readonly CoreJS.Parameter<any>[] = [
         new CoreJS.BoolParameter(App.PARAMETER_DEBUG, 'enables/disables debug mode', false),
@@ -43,7 +44,8 @@ export class App {
             new CoreJS.StringParameter(App.PARAMETER_CLASS, 'class name of the module'),
             new CoreJS.StringParameter(App.PARAMETER_PATH, 'to the module class'),
             new CoreJS.DictionaryParameter(App.PARAMETER_OPTIONS, 'from the module', [], {})
-        ]), [])
+        ]), []),
+        new CoreJS.DictionaryParameter(App.PARAMETER_ROUTES, 'all executable routes', undefined, {})
     ];
 
     public readonly onMessage = new CoreJS.Event<App, string>('App.onMessage');
@@ -58,6 +60,8 @@ export class App {
     private _descriptionResponse: CoreJS.TextResponse;
 
     constructor(public readonly config: CoreJS.Config, args: NodeJS.ReadOnlyDict<any> = {}) {
+        const routes = config.get<NodeJS.ReadOnlyDict<RouteData>>(App.PARAMETER_ROUTES);
+
         this.invalidRouteResponse = this.debug
             ? new CoreJS.ErrorResponse(CoreJS.ResponseCode.Forbidden, '#_invalid_route')
             : CoreJS.RESPONSE_NO_CONTENT;
@@ -77,6 +81,49 @@ export class App {
 
                 throw error;
             }
+        });
+
+        Object.keys(routes).forEach((name, routeIndex) => {
+            const data = routes[name];
+
+            if (!name)
+                throw new Error(`route at index '${routeIndex}' has invalid name`);
+
+            this.onMessage.emit(this, `loading route ${this.name}/${name}`);
+
+            if (!data.paths || !data.paths.length)
+                throw new Error(`route '${name}' needs to have at least one path`);
+
+            const description = data.description || '';
+
+            this._routes[name.toLowerCase()] = {
+                description,
+                paths: data.paths.map((path, pathIndex) => {
+                    const split = path.split(' ');
+
+                    if (!split[0])
+                        throw new Error(`missing module name of route '${name}' at path index '${pathIndex}'`)
+
+                    const moduleName = split[0].toLowerCase();
+                    const module = this.modules.find(module => module.name.toLowerCase() === moduleName);
+
+                    if (!module)
+                        throw new Error(`module with name '${split[0]}' does not exist`);
+
+                    const command = split[1];
+
+                    if (!command)
+                        throw new Error(`missing command of route '${name}' at path index '${pathIndex}'`)
+
+                    const args = CoreJS.parseArgsFromString(split.slice(2).join(' '));
+
+                    return {
+                        module,
+                        command,
+                        args
+                    };
+                })
+            };
         });
 
         this.updateDescription();
@@ -105,58 +152,6 @@ export class App {
 
             return module.deinit();
         }));
-    }
-
-    public async load(routes: NodeJS.ReadOnlyDict<RouteData>) {
-        try {
-            Object.keys(routes).forEach((name, routeIndex) => {
-                const data = routes[name];
-
-                if (!name)
-                    throw new Error(`route at index '${routeIndex}' has invalid name`);
-
-                this.onMessage.emit(this, `loading route ${this.name}/${name}`);
-
-                if (!data.paths || !data.paths.length)
-                    throw new Error(`route '${name}' needs to have at least one path`);
-
-                const description = data.description || '';
-
-                this._routes[name.toLowerCase()] = {
-                    description,
-                    paths: data.paths.map((path, pathIndex) => {
-                        const split = path.split(' ');
-
-                        if (!split[0])
-                            throw new Error(`missing module name of route '${name}' at path index '${pathIndex}'`)
-
-                        const moduleName = split[0].toLowerCase();
-                        const module = this.modules.find(module => module.name.toLowerCase() === moduleName);
-
-                        if (!module)
-                            throw new Error(`module with name '${split[0]}' does not exist`);
-
-                        const command = split[1];
-
-                        if (!command)
-                            throw new Error(`missing command of route '${name}' at path index '${pathIndex}'`)
-
-                        const args = CoreJS.parseArgsFromString(split.slice(2).join(' '));
-
-                        return {
-                            module,
-                            command,
-                            args
-                        };
-                    })
-                };
-            });
-        } catch (error) {
-            this.onError.emit(this, error);
-            throw error;
-        }
-
-        this.updateDescription();
     }
 
     public async execute(route?: string, args?: NodeJS.ReadOnlyDict<any>): Promise<CoreJS.Response> {
