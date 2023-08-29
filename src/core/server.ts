@@ -42,6 +42,7 @@ export class Server {
     private readonly allowedOrigins: readonly string[];
 
     private stopAction: () => void = null;
+    private textInfoResponse: CoreJS.Response;
     private htmlInfoResponse: CoreJS.Response;
     private jsonInfoResponse: CoreJS.Response;
 
@@ -97,6 +98,7 @@ export class Server {
 
         this.onMessage.emit(this, `server started (debug mode: ${CoreJS.parseFromBool(this.debug)})`);
 
+        this.textInfoResponse = new CoreJS.TextResponse(this.toString());
         this.htmlInfoResponse = new CoreJS.HTMLResponse(this.serialize({ type: CoreJS.SerializationType.HTML }));
         this.jsonInfoResponse = new CoreJS.Response(this.serialize({ type: CoreJS.SerializationType.JSON }), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
 
@@ -182,7 +184,9 @@ export class Server {
             ? await this.app.execute(route, args)
             : args.html
                 ? this.htmlInfoResponse
-                : this.jsonInfoResponse;
+                : args.text
+                    ? this.textInfoResponse
+                    : this.jsonInfoResponse;
 
         responseHeaders[CoreJS.ResponseHeader.ContentType] = result.type;
 
