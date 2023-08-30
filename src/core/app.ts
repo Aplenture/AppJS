@@ -199,7 +199,7 @@ export class App {
             return this.invalidRouteResponse;
 
         try {
-            for (let i = 0, d = routeData.paths[i], r; i < routeData.paths.length; ++i, d = routeData[i])
+            for (let i = 0, d = routeData.paths[i], r; i < routeData.paths.length; ++i, d = routeData.paths[i])
                 if (r = await d.module.execute(d.command, Object.assign(args, d.args)))
                     return r;
         } catch (error) {
