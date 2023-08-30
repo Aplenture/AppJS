@@ -17,8 +17,9 @@
         "clear": "node dist/index config.clear",
         "request": "node dist/index request",
         "config": "node dist/index config.get",
+        "update": "node dist/index exec update",
         "reset": "node dist/index exec reset",
-        "update": "node dist/index exec update"
+        "revert": "node dist/index exec revert"
     },
     "repository": {
         "type": "git",
