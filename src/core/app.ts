@@ -15,7 +15,7 @@ interface RouteData {
 
 interface Route {
     readonly description: string;
-    readonly parameters: NodeJS.ReadOnlyDict<any>;
+    readonly parameters: readonly CoreJS.Parameter<any>[];
     readonly paths: readonly {
         readonly module: BackendJS.Module.Module<any, any, any>;
         readonly command: string;
@@ -29,6 +29,7 @@ export class App {
     public static readonly PARAMETER_VERSION = 'version';
     public static readonly PARAMETER_AUTHOR = 'author';
     public static readonly PARAMETER_DESCRIPTION = 'description';
+    public static readonly PARAMETER_REPOSITORY = 'repository';
     public static readonly PARAMETER_MODULES = 'modules';
     public static readonly PARAMETER_CLASS = 'class';
     public static readonly PARAMETER_PATH = 'path';
@@ -41,6 +42,7 @@ export class App {
         new CoreJS.StringParameter(App.PARAMETER_VERSION, 'version of the app', '1.0'),
         new CoreJS.StringParameter(App.PARAMETER_AUTHOR, 'author of the app', '<author_name>'),
         new CoreJS.StringParameter(App.PARAMETER_DESCRIPTION, 'description of the app', '<my_app_description>'),
+        new CoreJS.StringParameter(App.PARAMETER_REPOSITORY, 'repository of the app', 'https://github.com/Aplenture/AppJS.git'),
         new CoreJS.ArrayParameter<string>(App.PARAMETER_MODULES, 'installed app modules', new CoreJS.DictionaryParameter('', '', [
             new CoreJS.StringParameter(App.PARAMETER_CLASS, 'class name of the module'),
             new CoreJS.StringParameter(App.PARAMETER_PATH, 'to the module class'),
@@ -85,6 +87,7 @@ export class App {
     public get version(): string { return this.config.get(App.PARAMETER_VERSION); }
     public get author(): string { return this.config.get(App.PARAMETER_AUTHOR); }
     public get description(): string { return this.config.get(App.PARAMETER_DESCRIPTION); }
+    public get repository(): string { return this.config.get(App.PARAMETER_REPOSITORY); }
     public get routes(): NodeJS.ReadOnlyDict<Route> { return this._routes; }
 
     public async init() {
@@ -99,7 +102,7 @@ export class App {
             return module.init();
         }));
 
-        const moduleDatas = this.modules.map(module => CoreJS.deserialize(module.serialize({ type: CoreJS.SerializationType.JSON })));
+        const moduleDatas = this.modules.map(module => module.toJSON());
 
         Object.keys(routes).forEach((name, routeIndex) => {
             const data = routes[name];
@@ -113,8 +116,8 @@ export class App {
                 throw new Error(`route '${name}' needs to have at least one path`);
 
             const description = data.description || '';
-            const parameters = {};
-            const routeArgs = {};
+            const parameters = [];
+            const routeArgs = [];
 
             const paths = data.paths.map((path, pathIndex) => {
                 const split = path.split(' ');
@@ -138,15 +141,17 @@ export class App {
 
                 const args = CoreJS.parseArgsFromString(split.slice(2).join(' '));
                 const moduleData = moduleDatas.find(data => data.name.toLowerCase() == moduleName);
-                const commandData = moduleData.commander.commands.find(tmp => tmp.name.toLowerCase() == command);
+                const commandData = moduleData.commands.find(tmp => tmp.name.toLowerCase() == command);
 
                 // add all command parameters to serialization
                 if (commandData.parameters)
-                    for (const key in commandData.parameters._parameters)
-                        parameters[key] = commandData.parameters._parameters[key];
+                    for (const key in commandData.parameters)
+                        if (!parameters.some(param => param.name.toLowerCase() == key.toLowerCase()))
+                            parameters.push(commandData.parameters[key]);
 
                 for (const key in args)
-                    routeArgs[key] = args[key];
+                    if (!routeArgs.includes(key))
+                        routeArgs.push(key.toLowerCase());
 
                 return {
                     module,
@@ -156,8 +161,14 @@ export class App {
             });
 
             // remove all route args from serialization
-            for (const key in routeArgs)
-                delete parameters[key];
+            routeArgs.forEach(key => {
+                const index = parameters.findIndex(param => param.name.toLowerCase() == key);
+
+                if (0 > index)
+                    return;
+
+                parameters.splice(index, 1);
+            });
 
             this._routes[name.toLowerCase()] = {
                 description,
@@ -200,32 +211,33 @@ export class App {
         }
     }
 
-    public serialize(options?: CoreJS.SerializationOptions): string {
-        if (!options || !options.type)
-            return this.toString();
-
-        return CoreJS.serialize({
-            name: this.name,
-            version: this.version,
-            author: this.author,
-            description: this.description,
-            routes: Object.keys(this._routes).map(path => ({
-                path,
-                description: this._routes[path].description,
-                parameters: this._routes[path].parameters
-            }))
-        }, options);
-    }
-
-    public toString(): string {
+    public toString() {
         let result = `${this.name} v${this.version} by ${this.author}\n`;
 
         if (this.description)
             result += '\n' + this.description + '\n';
 
+        if (this.repository)
+            result += '\n' + this.repository + '\n';
+
         result += '\nRoutes:\n';
         result += Object.keys(this._routes).map(route => `${route} - ${this._routes[route].description}`).join('\n') + '\n';
 
         return result;
+    }
+
+    public toJSON() {
+        return {
+            name: this.name,
+            version: this.version,
+            author: this.author,
+            description: this.description,
+            repository: this.repository,
+            routes: Object.keys(this._routes).map(path => ({
+                path,
+                description: this._routes[path].description,
+                parameters: this._routes[path].parameters
+            }))
+        };
     }
 }

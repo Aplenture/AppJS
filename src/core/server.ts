@@ -12,7 +12,7 @@ import * as HTTPS from "https";
 import { App } from "./app";
 
 export class Server {
-    public static readonly PARAMETER_DEBUG = 'debug';
+    public static readonly PARAMETER_ENDPOINT = 'endpoint';
     public static readonly PARAMETER_HTTPS = 'https';
     public static readonly PARAMETER_PORT = 'port';
     public static readonly PARAMETER_HOST = 'host';
@@ -23,7 +23,7 @@ export class Server {
     public static readonly PARAMETER_RESPONSE_HEADERS = 'responseHeaders';
 
     public static readonly Parameters: readonly CoreJS.Parameter<any>[] = [
-        new CoreJS.BoolParameter(Server.PARAMETER_DEBUG, 'enables/disables debug mode', false),
+        new CoreJS.StringParameter(Server.PARAMETER_ENDPOINT, 'the domain of this server', 'http://localhost:4431'),
         new CoreJS.BoolParameter(Server.PARAMETER_HTTPS, 'switch between http and https', false),
         new CoreJS.StringParameter(Server.PARAMETER_HOST, 'of server', 'localhost'),
         new CoreJS.NumberParameter(Server.PARAMETER_PORT, 'of server', 4431),
@@ -64,7 +64,8 @@ export class Server {
     }
 
     public get isRunning(): boolean { return !!this.stopAction; }
-    public get debug(): boolean { return this.config.get(Server.PARAMETER_DEBUG); }
+    public get debug(): boolean { return this.app.debug; }
+    public get endpoint(): string { return this.config.get(Server.PARAMETER_ENDPOINT); }
 
     public start() {
         if (this.isRunning) throw new Error('server is running already');
@@ -99,8 +100,8 @@ export class Server {
         this.onMessage.emit(this, `server started (debug mode: ${CoreJS.parseFromBool(this.debug)})`);
 
         this.textInfoResponse = new CoreJS.TextResponse(this.toString());
-        this.htmlInfoResponse = new CoreJS.HTMLResponse(this.serialize({ type: CoreJS.SerializationType.HTML }));
-        this.jsonInfoResponse = new CoreJS.Response(this.serialize({ type: CoreJS.SerializationType.JSON }), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
+        this.htmlInfoResponse = new CoreJS.HTMLResponse(this.toHTML());
+        this.jsonInfoResponse = new CoreJS.Response(JSON.stringify(this), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
 
         return new Promise<void>(resolve => this.stopAction = () => {
             server.close();
@@ -117,23 +118,67 @@ export class Server {
         this.stopAction();
     }
 
-    public serialize(options?: CoreJS.SerializationOptions): string {
-        if (!options || !options.type)
-            return this.toString();
+    public toString() {
+        let result = `${this.app.name} v${this.app.version} by ${this.app.author}\n`;
 
-        return CoreJS.serialize({
-            app: this.app,
-            allowedRequestHeaders: this.allowedRequestHeaders
-        }, options);
-    }
+        if (this.app.description)
+            result += `\n${this.app.description}\n`;
 
-    public toString(): string {
-        let result = this.app.toString();
+        if (this.app.repository)
+            result += '\n' + this.app.repository + '\n';
+
+        result += `\nEndpoint: ${this.endpoint}\n`;
 
         if (this.allowedRequestHeaders.length) {
             result += '\nAllowed Request Headers:\n';
             result += this.allowedRequestHeaders.join('\n');
         }
+
+        result += '\nRoutes:\n';
+        result += Object.keys(this.app.routes).map(route => `${route} - ${this.app.routes[route].description}`).join('\n') + '\n';
+
+        return result;
+    }
+
+    public toJSON() {
+        return {
+            name: this.app.name,
+            endpoint: this.endpoint,
+            version: this.app.version,
+            author: this.app.author,
+            description: this.app.description,
+            repository: this.app.repository,
+            allowedRequestHeaders: this.allowedRequestHeaders,
+            routes: Object.keys(this.app.routes).map(path => ({
+                path,
+                description: this.app.routes[path].description,
+                parameters: this.app.routes[path].parameters
+            }))
+        };
+    }
+
+    public toHTML() {
+        const appData = this.app.toJSON();
+
+        let result = `<h1>${appData.name} v${appData.version}</h1>`;
+
+        if (appData.description)
+            result += `<h2>${appData.description}</h2>`;
+
+        result += `<h4>by ${appData.author}</h4>`;
+
+        if (appData.repository)
+            result += `<h3>Repository</h3><a href="${appData.repository}">${appData.repository}</a>`;
+
+        result += `<h3>Endpoint</h3><a href="${this.endpoint}">${this.endpoint}</a>`;
+
+        if (this.allowedRequestHeaders.length) {
+            result += '<h3>Allowed Headers</h3>';
+            result += this.allowedRequestHeaders.join('</br>');
+        }
+
+        result += '<h3>Routes</h3>';
+        result += Object.values(appData.routes).map(route => `<h4><a href="${this.endpoint}/${route.path}">/${route.path}</a></h4><p>${route.description}</p><table><tr><th colspan=5>Parameters</th><tr><th>Name</th><th>Type</th><th>Description</th><th>Optional</th><th>Default</th></tr>${route.parameters.map(param => `<tr><td><b>${param.name}</b></td><td>${param.type}</td><td>${param.description}</td><td>${param.optional}</td><td>${param.optional ? param.def : ''}</td></tr>`).join('')}</table>`).join('');
 
         return result;
     }

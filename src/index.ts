@@ -161,7 +161,6 @@ commander.set({
     name: 'config.get',
     description: "returns the config",
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('type', 'serialization type', CoreJS.SerializationType.JSON),
         new CoreJS.NumberParameter('space', 'serialization option space', 4),
         new CoreJS.StringParameter('path', 'config file path', 'config')
     ),
@@ -171,9 +170,9 @@ commander.set({
         if (FS.existsSync(path))
             config.deserialize(BackendJS.loadConfig(path));
         else
-            FS.writeFileSync(path, config.serialize(args));
+            FS.writeFileSync(path, JSON.stringify(config, null, args.space));
 
-        return config.serialize(args);
+        return JSON.stringify(config, null, args.space);
     }
 });
 
@@ -181,7 +180,6 @@ commander.set({
     name: 'config.create',
     description: "writes config to file",
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('type', 'serialization type', CoreJS.SerializationType.JSON),
         new CoreJS.NumberParameter('space', 'serialization option space', 4),
         new CoreJS.StringParameter('path', 'config file path', 'config'),
         new CoreJS.BoolParameter('force', 'overwrites existing config file', false)
@@ -192,7 +190,7 @@ commander.set({
         if (FS.existsSync(path) && !args.force)
             return `config file already exist at '${path}'\n`;
 
-        FS.writeFileSync(path, config.serialize(args));
+        FS.writeFileSync(path, JSON.stringify(config, null, args.space));
 
         return `config written to file at '${path}'\n`;
     }
