@@ -199,9 +199,14 @@ export class App {
             return this.invalidRouteResponse;
 
         try {
-            for (let i = 0, d = routeData.paths[i], r; i < routeData.paths.length; ++i, d = routeData.paths[i])
-                if (r = await d.module.execute(d.command, Object.assign(args, d.args)))
+            for (let i = 0, d = routeData.paths[i], r: CoreJS.Response | void; i < routeData.paths.length; ++i, d = routeData.paths[i]) {
+                // parse args by route path args
+                Object.assign(args, d.args);
+
+                // execute route commands until any command returns a reponse
+                if (r = await d.module.execute(d.command, args))
                     return r;
+            }
         } catch (error) {
             this.onError.emit(this, error);
 
