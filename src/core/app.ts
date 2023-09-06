@@ -15,8 +15,7 @@ interface RouteData {
 
 interface Route {
     readonly description: string;
-    readonly parameters: readonly CoreJS.Parameter<any>[];
-    readonly parameterNames: readonly string[];
+    readonly parameters: CoreJS.ParameterList;
     readonly paths: readonly {
         readonly module: BackendJS.Module.Module<any, any, any>;
         readonly command: string;
@@ -171,12 +170,9 @@ export class App {
                 parameters.splice(index, 1);
             });
 
-            const parameterNames = parameters.map(param => param.name);
-
             this._routes[name.toLowerCase()] = {
                 description,
-                parameters,
-                parameterNames,
+                parameters: new CoreJS.ParameterList(...parameters),
                 paths
             };
         });
@@ -193,7 +189,7 @@ export class App {
         }));
     }
 
-    public async execute(route?: string, args: NodeJS.Dict<any> = {}): Promise<CoreJS.Response> {
+    public async execute(route?: string, args?: NodeJS.ReadOnlyDict<any>): Promise<CoreJS.Response> {
         if (!route)
             return new CoreJS.TextResponse(this.toString());
 
@@ -202,13 +198,11 @@ export class App {
         if (!routeData)
             return this.invalidRouteResponse;
 
-        // filter args by route command params
-        // to prevent securtiy leaks
-        for (const key in args)
-            if (!routeData.parameterNames.includes(key))
-                delete args[key];
-
         try {
+            // parse args by all route command params
+            // to prevent securtiy leaks
+            args = routeData.parameters.parse(args, {}, true);
+
             for (let i = 0, d = routeData.paths[i], r: CoreJS.Response | void; i < routeData.paths.length; ++i, d = routeData.paths[i]) {
                 // parse args by route path args
                 Object.assign(args, d.args);
@@ -251,7 +245,7 @@ export class App {
             routes: Object.keys(this._routes).map(path => ({
                 path,
                 description: this._routes[path].description,
-                parameters: this._routes[path].parameters
+                parameters: this._routes[path].parameters.toJSON()
             }))
         };
     }
