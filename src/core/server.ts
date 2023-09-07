@@ -11,8 +11,13 @@ import * as HTTP from "http";
 import * as HTTPS from "https";
 import { App } from "./app";
 
+export enum Protocol {
+    HTTP = "http",
+    HTTPS = "https"
+}
+
 export class Server {
-    public static readonly PARAMETER_HTTPS = 'https';
+    public static readonly PARAMETER_PROTOCOL = 'protocol';
     public static readonly PARAMETER_PORT = 'port';
     public static readonly PARAMETER_HOST = 'host';
     public static readonly PARAMETER_KEY = 'sslKey';
@@ -22,7 +27,7 @@ export class Server {
     public static readonly PARAMETER_RESPONSE_HEADERS = 'responseHeaders';
 
     public static readonly Parameters: readonly CoreJS.Parameter<any>[] = [
-        new CoreJS.BoolParameter(Server.PARAMETER_HTTPS, 'switch between http and https', false),
+        new CoreJS.StringParameter(Server.PARAMETER_PROTOCOL, 'http | https | empty', ''),
         new CoreJS.StringParameter(Server.PARAMETER_HOST, 'of server', 'localhost'),
         new CoreJS.NumberParameter(Server.PARAMETER_PORT, 'of server', 4431),
         new CoreJS.StringParameter(Server.PARAMETER_KEY, 'path to ssl key file', 'key.pem'),
@@ -66,40 +71,50 @@ export class Server {
     public get isRunning(): boolean { return !!this._stopAction; }
     public get debug(): boolean { return this.app.debug; }
     public get endpoint(): string { return this._endpoint; }
+    public get protocol(): string { return this.config.get(Server.PARAMETER_PROTOCOL); }
 
-    public start() {
+    public start(): Promise<void> {
         if (this.isRunning) throw new Error('server is running already');
 
-        const isHTTPS = this.config.get<boolean>(Server.PARAMETER_HTTPS);
+        const protocol = this.protocol;
 
-        if (isHTTPS) {
-            if (!this.config.has(Server.PARAMETER_KEY))
-                throw new Error(`config parameter '${Server.PARAMETER_KEY}' is needed when '${Server.PARAMETER_HTTPS} is enabled'`);
+        switch (protocol) {
+            case Protocol.HTTP:
+                break;
 
-            if (!FS.existsSync(this.config.get(Server.PARAMETER_KEY)))
-                throw new Error(`ssl key at '${this.config.get(Server.PARAMETER_KEY)}' does not exist`);
+            case Protocol.HTTPS:
+                if (!this.config.has(Server.PARAMETER_KEY))
+                    throw new Error(`missing config parameter '${Server.PARAMETER_KEY}'`);
 
-            if (!this.config.has(Server.PARAMETER_CERT))
-                throw new Error(`config parameter '${Server.PARAMETER_CERT}' is needed when '${Server.PARAMETER_HTTPS} is enabled'`);
+                if (!FS.existsSync(this.config.get(Server.PARAMETER_KEY)))
+                    throw new Error(`ssl key at '${this.config.get(Server.PARAMETER_KEY)}' does not exist`);
 
-            if (!FS.existsSync(this.config.get(Server.PARAMETER_CERT)))
-                throw new Error(`ssl certificate at '${this.config.get(Server.PARAMETER_CERT)}' does not exist`);
+                if (!this.config.has(Server.PARAMETER_CERT))
+                    throw new Error(`missing config parameter '${Server.PARAMETER_CERT}'`);
+
+                if (!FS.existsSync(this.config.get(Server.PARAMETER_CERT)))
+                    throw new Error(`ssl certificate at '${this.config.get(Server.PARAMETER_CERT)}' does not exist`);
+                break;
+
+            default:
+                this.onMessage.emit(this, `not started (unsupported protocol '${protocol}')`);
+                return Promise.resolve();
         }
 
         const host = this.config.get<string>(Server.PARAMETER_HOST);
         const port = this.config.get<number>(Server.PARAMETER_PORT);
 
-        const server = isHTTPS
-            ? HTTPS.createServer({
+        const server = protocol == Protocol.HTTP
+            ? HTTP.createServer((request, response) => this.onRequest(request, response))
+            : HTTPS.createServer({
                 key: FS.readFileSync(this.config.get(Server.PARAMETER_KEY)),
                 cert: FS.readFileSync(this.config.get(Server.PARAMETER_CERT))
-            }, (request, response) => this.onRequest(request, response))
-            : HTTP.createServer((request, response) => this.onRequest(request, response));
+            }, (request, response) => this.onRequest(request, response));
 
         server.on('error', error => this.onError.emit(this, error));
         server.listen({ host, port });
 
-        this._endpoint = `${isHTTPS ? 'https' : 'http'}://${host}:${port}/`;
+        this._endpoint = `${protocol}://${host}:${port}/`;
 
         this._textInfoResponse = new CoreJS.TextResponse(this.toString());
         this._htmlInfoResponse = new CoreJS.HTMLResponse(this.toHTML());

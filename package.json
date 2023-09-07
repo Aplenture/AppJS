@@ -14,9 +14,9 @@
         "start": "node dist/index start",
         "exec": "node dist/index exec",
         "help": "node dist/index help",
-        "clear": "node dist/index config.clear",
-        "request": "node dist/index request",
-        "config": "node dist/index config.get",
+        "clear": "node dist/index log.clear",
+        "config.get": "node dist/index config.get",
+        "config.serialize": "node dist/index config.serialize",
         "update": "node dist/index exec update",
         "reset": "node dist/index exec reset",
         "revert": "node dist/index exec revert"

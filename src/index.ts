@@ -8,7 +8,6 @@
 import * as BackendJS from "backendjs";
 import * as CoreJS from "corejs";
 import * as FS from "fs";
-import * as HTTP from "http";
 import { App, Server } from "./core";
 
 const PARAMETER_LOGFILE = 'logfile';
@@ -22,10 +21,12 @@ const route = process.argv[3] && 0 != process.argv[3].indexOf('-')
 
 const globalArgs = CoreJS.parseArgsFromString(process.argv.slice(route ? 4 : 3).join(' '));
 
-const commander = new CoreJS.Commander();
 const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...BackendJS.Module.GlobalParameters);
 const infos = BackendJS.loadConfig('package.json');
+const commander = new CoreJS.Commander();
 
+let log: BackendJS.Log.Log;
+let app: App;
 let server: Server;
 
 config.add(new CoreJS.StringParameter(PARAMETER_LOGFILE, 'file path of log file', './app.log'));
@@ -37,48 +38,49 @@ commander.set({
     name: 'start',
     description: "starts the server",
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('config', 'filepath of additional config', 'server.json')
+        new CoreJS.StringParameter('config', 'filepath of additional config', 'server.json'),
+        new CoreJS.BoolParameter('server', 'starts also the server', true)
     ),
     execute: async args => {
-        if (server)
-            return "server is already running\n";
+        if (app)
+            return "already running\n";
 
         const additionalConfigPath: string = args.config;
+        const startServer: string = args.server;
 
         delete args.config;
+        delete args.server;
 
         // deserialize additional config
         if (additionalConfigPath)
             await commander.execute('config.load', { path: additionalConfigPath });
 
-        const log = BackendJS.Log.Log.createFileLog(config.get(PARAMETER_LOGFILE));
-
+        log = BackendJS.Log.Log.createFileLog(config.get(PARAMETER_LOGFILE));
         log.write(`loaded config '${DEFAULT_CONFIG}'`);
         if (additionalConfigPath) log.write(`loaded config '${additionalConfigPath}'`);
 
-        process.on('exit', code => process.stdout.write(`server stopped${code ? ` with exit code ${code}` : ''}\n`));
+        process.on('exit', code => code && process.stdout.write(`exit with code ${code}\n`));
         process.on('SIGINT', () => commander.execute('stop'));
         process.on('SIGUSR1', () => commander.execute('stop'));
         process.on('SIGUSR2', () => commander.execute('stop'));
         process.on('uncaughtException', error => log.error(error));
         process.on('unhandledRejection', reason => log.error(reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
 
-        const app = new App(config, args);
+        app = new App(config, args);
         app.onMessage.on((message, sender) => log.write(message, sender.name + ' (App)'));
         app.onError.on((error, sender) => log.error(error, sender.name + ' (App)'));
         await app.init();
 
         process.title = app.name;
 
-        server = new Server(app, config);
-        server.onMessage.on((message, sender) => log.write(message, sender.app.name + ' (Server)'));
-        server.onError.on((error, sender) => log.error(error, sender.app.name + ' (Server)'));
-        server
-            .start()
-            .then(() => app.deinit())
-            .then(() => log.close());
+        if (startServer) {
+            server = new Server(app, config);
+            server.onMessage.on((message, sender) => log.write(message, sender.app.name + ' (Server)'));
+            server.onError.on((error, sender) => log.error(error, sender.app.name + ' (Server)'));
+            server.start();
+        }
 
-        return "server started\n";
+        return "started\n";
     }
 });
 
@@ -86,12 +88,16 @@ commander.set({
     name: 'stop',
     description: "stops the server",
     execute: async args => {
-        if (!server)
-            return "server is not running\n";
+        if (server)
+            await server.stop();
 
-        server.stop();
+        if (app)
+            await app.deinit();
 
-        return "server stopped\n";
+        if (log)
+            await log.close();
+
+        return "stopped\n";
     }
 });
 
@@ -99,87 +105,26 @@ commander.set({
     name: 'exec',
     description: 'sends request to a server instance',
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('config', 'filepath of additional config', 'local.json'),
-        new CoreJS.BoolParameter('start', 'starts server if it is not running already', true),
+        new CoreJS.StringParameter('config', 'filepath of additional config', 'local.json')
     ),
     execute: async args => {
-        const additionalConfigPath: string = args.config;
-        const start: boolean = args.start;
+        if (app)
+            return await app.execute(route, args)
+                .then(result => result.data);
 
-        delete args.config;
-        delete args.start;
+        args.server = false;
 
-        // deserialize additional config
-        if (additionalConfigPath)
-            await commander.execute('config.load', { path: additionalConfigPath });
+        await commander.execute('start', args);
 
-        return await new Promise<string>((resolve, reject) => {
-            const params = CoreJS.URLArgsToString(args);
-            const path = params
-                ? `/${route}?${params}`
-                : `/${route}`;
+        const result = await app.execute(route, args);
 
-            const request = HTTP.request({
-                host: config.get(Server.PARAMETER_HOST),
-                port: config.get(Server.PARAMETER_PORT),
-                path,
-                method: 'GET'
-            }, response => {
-                let data = '';
+        await commander.execute("stop");
 
-                response.on('error', reject);
-                response.on('data', chunk => data += chunk);
-                response.on('close', () => {
-                    switch (response.statusCode) {
-                        case CoreJS.ResponseCode.OK:
-                            resolve(data.toString());
-                            break;
-
-                        default:
-                            resolve(`Error ${response.statusCode}: ${data.toString()}`);
-                            break;
-                    }
-                });
-            });
-
-            request.on('error', (error: any) => {
-                switch (error.errno) {
-                    // server is not running
-                    case -111: //ECONNREFUSED
-                        if (!start)
-                            return resolve('server is not running\n');
-
-                        // start the server
-                        // and retry exec
-                        return commander
-                            .execute('start', { config: additionalConfigPath })
-                            .then(() => commander.execute('exec', Object.assign({}, args, {
-                                config: '',
-                                start: false
-                            })))
-                            .then(resolve)
-                            .catch(reject)
-                            .then(() => commander.execute('stop'));
-
-                    default:
-                        return reject(error);
-                }
-            });
-
-            request.end();
-        });
+        return result.data;
     }
 });
 
-commander.set({
-    name: 'config.get',
-    description: "returns the config",
-    parameters: new CoreJS.ParameterList(
-        new CoreJS.NumberParameter('space', 'serialization option space', 4)
-    ),
-    execute: async args => JSON.stringify(config, null, args.space)
-});
-
+commander.set(...config.createCommands());
 commander.set({
     name: 'config.load',
     description: "loads an additional config file",
@@ -224,12 +169,12 @@ commander.set({
 });
 
 commander.set({
-    name: 'config.clear',
-    description: "clears the config file",
+    name: 'log.clear',
+    description: "clears the log file",
     execute: async args => {
         await BackendJS.Log.Log.clear(config.get(PARAMETER_LOGFILE));
 
-        return `config cleared\n`;
+        return `log cleared\n`;
     }
 });
 
