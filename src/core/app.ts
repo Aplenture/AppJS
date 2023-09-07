@@ -8,6 +8,94 @@
 import * as BackendJS from "backendjs";
 import * as CoreJS from "corejs";
 
+const DEFAULT_MODULES: ModuleData[] = [{
+    class: "Module",
+    path: "./node_modules/backendjs/dist/account/core/module",
+    options: {
+        name: "account",
+        databaseConfig: {
+            host: "localhost",
+            user: "dev",
+            password: "",
+            database: "my_app_database"
+        }
+    }
+}];
+
+const DEFAULT_ROUTES: NodeJS.ReadOnlyDict<RouteData> = {
+    update: {
+        description: "updates all modules",
+        paths: [
+            "account update"
+        ]
+    },
+    reset: {
+        description: "resets all modules",
+        paths: [
+            "account reset"
+        ]
+    },
+    revert: {
+        description: "reverts all modules",
+        paths: [
+            "account revert"
+        ]
+    },
+    hasaccess: {
+        description: "checks whether access is valid",
+        paths: [
+            "account hasaccess"
+        ]
+    },
+    createAccount: {
+        description: "creates a new account",
+        paths: [
+            "account createAccount"
+        ]
+    },
+    login: {
+        description: "account login",
+        paths: [
+            "account login"
+        ]
+    },
+    logout: {
+        description: "account logout",
+        paths: [
+            "account validate --rights 1",
+            "account logout"
+        ]
+    },
+    changePassword: {
+        description: "changes the password from the account",
+        paths: [
+            "account validate --rights 1",
+            "account changePassword"
+        ]
+    },
+    getAccesses: {
+        description: "returns all open accesses from the account",
+        paths: [
+            "account validate --rights 1",
+            "account getAccesses"
+        ]
+    },
+    createAccess: {
+        description: "creates a new access",
+        paths: [
+            "account validate --rights 1",
+            "account createAccess"
+        ]
+    },
+    deleteAccess: {
+        description: "deletes an existing access",
+        paths: [
+            "account validate --rights 1",
+            "account deleteAccess"
+        ]
+    }
+};
+
 interface RouteData {
     readonly description?: string;
     readonly paths: readonly string[];
@@ -22,6 +110,8 @@ interface Route {
         readonly args: NodeJS.ReadOnlyDict<any>;
     }[];
 }
+
+type ModuleData = BackendJS.LoadModuleConfig & { readonly options?: any; };
 
 export class App {
     public static readonly PARAMETER_DEBUG = 'debug';
@@ -43,12 +133,12 @@ export class App {
         new CoreJS.StringParameter(App.PARAMETER_AUTHOR, 'author of the app', '<author_name>'),
         new CoreJS.StringParameter(App.PARAMETER_DESCRIPTION, 'description of the app', '<my_app_description>'),
         new CoreJS.StringParameter(App.PARAMETER_REPOSITORY, 'repository of the app', 'https://github.com/Aplenture/AppJS.git'),
-        new CoreJS.ArrayParameter<string>(App.PARAMETER_MODULES, 'installed app modules', new CoreJS.DictionaryParameter('', '', [
+        new CoreJS.ArrayParameter<ModuleData>(App.PARAMETER_MODULES, 'installed app modules', new CoreJS.DictionaryParameter('', '', [
             new CoreJS.StringParameter(App.PARAMETER_CLASS, 'class name of the module'),
             new CoreJS.StringParameter(App.PARAMETER_PATH, 'to the module class'),
             new CoreJS.DictionaryParameter(App.PARAMETER_OPTIONS, 'from the module', [], {})
-        ]), []),
-        new CoreJS.DictionaryParameter(App.PARAMETER_ROUTES, 'all executable routes', undefined, {})
+        ]), DEFAULT_MODULES),
+        new CoreJS.DictionaryParameter(App.PARAMETER_ROUTES, 'all executable routes', undefined, DEFAULT_ROUTES)
     ];
 
     public readonly onMessage = new CoreJS.Event<App, string>('App.onMessage');
@@ -64,7 +154,7 @@ export class App {
             ? new CoreJS.ErrorResponse(CoreJS.ResponseCode.Forbidden, '#_invalid_route')
             : CoreJS.RESPONSE_NO_CONTENT;
 
-        this.modules = config.get<ReadonlyArray<BackendJS.LoadModuleConfig & { readonly options?: any; }>>(App.PARAMETER_MODULES).map(data => {
+        this.modules = config.get<readonly ModuleData[]>(App.PARAMETER_MODULES).map(data => {
             try {
                 const module = BackendJS.loadModule<BackendJS.Module.Module<any, any, any>>(data, args, data.options);
 
