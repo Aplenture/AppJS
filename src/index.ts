@@ -17,13 +17,7 @@ const DEFAULT_CONFIG = 'config.json';
 const PATH_CONFIGS = 'configs/';
 const PATH_SCRIPTS = 'scripts/';
 
-const command = process.argv[2];
-const route = process.argv[3] && 0 != process.argv[3].indexOf('-')
-    ? process.argv[3]
-    : '';
-
-const globalArgs = CoreJS.parseArgsFromString(process.argv.slice(route ? 4 : 3).join(' '));
-
+const globalArgs = CoreJS.parseArgsFromString(process.argv.slice(3).join(' '));
 const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...BackendJS.Module.GlobalParameters);
 const infos = BackendJS.loadConfig('package.json');
 const commander = new CoreJS.Commander();
@@ -111,9 +105,14 @@ commander.set({
     name: 'exec',
     description: 'sends request to a server instance',
     parameters: new CoreJS.ParameterList(
+        new CoreJS.StringParameter('route', 'route name', ''),
         new CoreJS.StringParameter('config', 'filepath of additional config', 'local.json')
     ),
     execute: async args => {
+        const route: string = args.route;
+
+        delete args.route;
+
         if (app)
             return await app.execute(route, args)
                 .then(result => result.data);
@@ -224,6 +223,6 @@ commander.set({
 });
 
 commander
-    .execute(command, globalArgs)
+    .executeLine(process.argv.slice(2).join(' '))
     .then(result => process.stdout.write(result))
     .catch(error => process.stdout.write(error.stack)); 

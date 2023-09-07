@@ -306,6 +306,17 @@ export class App {
         }
     }
 
+    public executeLine(route?: string) {
+        if (!route)
+            return this.execute();
+
+        const split = route.split(' ');
+        const command = split[0];
+        const args = CoreJS.parseArgsFromString(route.substring(command.length));
+
+        return this.execute(command, args);
+    }
+
     public toString() {
         let result = `${this.name} v${this.version} by ${this.author}\n`;
 

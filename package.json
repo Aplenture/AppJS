@@ -18,9 +18,9 @@
         "clear": "node dist/index log.clear",
         "config.get": "node dist/index config.get",
         "config.serialize": "node dist/index config.serialize",
-        "update": "node dist/index exec update",
-        "reset": "node dist/index exec reset",
-        "revert": "node dist/index exec revert"
+        "update": "node dist/index exec --route update",
+        "reset": "node dist/index exec --route reset",
+        "revert": "node dist/index exec --route revert"
     },
     "repository": {
         "type": "git",
