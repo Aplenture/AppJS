@@ -10,7 +10,7 @@
     "scripts": {
         "build": "rm -rf dist; mkdir dist; tsc -p tsconfig.json; npm test",
         "test": "mocha -r ts-node/register 'tests/**/*.ts' --timeout 6000",
-        "postinstall": "npm run build; node dist/index config.create --path config --path local --path server",
+        "postinstall": "npm run build; node dist/index config.create --path config.json --path local.json --path server.json",
         "start": "node dist/index start",
         "exec": "node dist/index exec",
         "help": "node dist/index help",
