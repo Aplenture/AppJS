@@ -18,60 +18,40 @@ const route = process.argv[3] && 0 != process.argv[3].indexOf('-')
     ? process.argv[3]
     : '';
 
-const args = CoreJS.parseArgsFromString(process.argv.slice(route ? 4 : 3).join(' '));
+const globalArgs = CoreJS.parseArgsFromString(process.argv.slice(route ? 4 : 3).join(' '));
 
 const commander = new CoreJS.Commander();
-const commandLine = process.argv.slice(2).join(' ');
 const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...BackendJS.Module.GlobalParameters);
 const infos = BackendJS.loadConfig('package.json');
 
-config.add(new CoreJS.StringParameter(PARAMETER_LOGFILE, 'file path of log file', './log.log'));
+config.add(new CoreJS.StringParameter(PARAMETER_LOGFILE, 'file path of log file', './app.log'));
 config.set(App.PARAMETER_VERSION, infos.version);
 config.deserialize(BackendJS.loadConfig('configs/config.json'));
-config.deserialize(args);
-
-const log = BackendJS.Log.Log.createFileLog(config.get(PARAMETER_LOGFILE));
-
-process.on('exit', code => code && log.write("exit with code " + code));
-process.on('SIGINT', () => log.close().then(() => process.exit()));
-process.on('SIGUSR1', () => log.close().then(() => process.exit()));
-process.on('SIGUSR2', () => log.close().then(() => process.exit()));
-process.on('uncaughtException', error => log.error(error));
-process.on('unhandledRejection', reason => log.error(reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
-
-// commander.set({
-//     name: 'help',
-//     description: 'lists all commands or returns details of specific <command>',
-//     parameters: new CoreJS.ParameterList(
-//         new CoreJS.StringParameter('command', 'Lists all commands with this prefix or returns details of specific command.', '')
-//     ),
-//     execute: async args => {
-//         const app = new App(config, args);
-
-//         app.onError.on(error => process.stdout.write(error.stack));
-//         app.onError.on((error: any) => process.exit(error.code));
-
-//         await app.init();
-//         await app.load(...config.get<any[]>(PARAMETER_PUBLIC_ROUTES));
-
-//         return app.description;
-//     }
-// });
+config.deserialize(globalArgs);
 
 commander.set({
     name: 'start',
     description: "starts the server",
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('config', 'filepath of additional config', 'server'),
+        new CoreJS.StringParameter('config', 'filepath of additional config', 'server')
     ),
     execute: async args => {
-        // deserialize additional config
-        if (args.config) {
-            process.stdout.write(`load additional config '${args.config}'\n`);
-            await commander.execute('config.get', { path: args.config });
+        const additionalConfigPath: string = args.config;
 
-            delete args.config;
-        }
+        delete args.config;
+
+        // deserialize additional config
+        if (additionalConfigPath)
+            await commander.execute('config.load', { path: additionalConfigPath });
+
+        const log = BackendJS.Log.Log.createFileLog(config.get(PARAMETER_LOGFILE));
+
+        process.on('exit', code => code && log.write("exit with code " + code));
+        process.on('SIGINT', () => log.close().then(() => process.exit()));
+        process.on('SIGUSR1', () => log.close().then(() => process.exit()));
+        process.on('SIGUSR2', () => log.close().then(() => process.exit()));
+        process.on('uncaughtException', error => log.error(error));
+        process.on('unhandledRejection', reason => log.error(reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
 
         const app = new App(config, args);
         const server = new Server(app, config);
@@ -84,95 +64,117 @@ commander.set({
         server.onMessage.on(message => log.write(message));
         server.onError.on(error => log.error(error));
 
-        process.stdout.write('init app\n');
         await app.init();
 
-        process.stdout.write('start server\n');
-        await server.start();
+        server
+            .start()
+            .then(() => app.deinit())
+            .then(() => log.close());
 
-        return "server stopped\n";
+        return "server started\n";
     }
 });
 
 commander.set({
     name: 'exec',
-    description: 'executes public and private commands',
+    description: 'sends request to a server instance',
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('config', 'filepath of additional config', 'cli'),
+        new CoreJS.StringParameter('config', 'filepath of additional config', 'local'),
+        new CoreJS.BoolParameter('start', 'starts server if it is not running already', true),
     ),
     execute: async args => {
-        // deserialize additional config
-        await commander.execute('config.get', { path: args.config });
+        const additionalConfigPath: string = args.config;
+        const start: boolean = args.start;
 
         delete args.config;
+        delete args.start;
 
-        const app = new App(config, args);
+        // deserialize additional config
+        if (additionalConfigPath)
+            await commander.execute('config.load', { path: additionalConfigPath });
 
-        process.title = `${app.name} ${commandLine}`;
+        return await new Promise<string>((resolve, reject) => {
+            const params = CoreJS.URLArgsToString(args);
+            const path = params
+                ? `/${route}?${params}`
+                : `/${route}`;
 
-        app.onError.on(error => process.stdout.write(error.stack + '\n'));
+            const request = HTTP.request({
+                host: config.get(Server.PARAMETER_HOST),
+                port: config.get(Server.PARAMETER_PORT),
+                path,
+                method: 'GET'
+            }, response => {
+                let data = '';
 
-        await app.init();
+                response.on('error', reject);
+                response.on('data', chunk => data += chunk);
+                response.on('close', () => {
+                    switch (response.statusCode) {
+                        case CoreJS.ResponseCode.OK:
+                            resolve(data.toString());
+                            break;
 
-        const response = await app.execute(route, args);
+                        default:
+                            resolve(`Error ${response.statusCode}: ${data.toString()}`);
+                            break;
+                    }
+                });
+            });
 
-        return response.data;
-    }
-});
+            request.on('error', (error: any) => {
+                switch (error.errno) {
+                    // server is not running
+                    case -111: //ECONNREFUSED
+                        if (!start)
+                            return resolve('server is not running\n');
 
-commander.set({
-    name: 'request',
-    description: 'sends request to the server',
-    execute: async args => new Promise<string>((resolve, reject) => {
-        const params = CoreJS.URLArgsToString(args);
-        const path = params
-            ? `/${route}?${params}`
-            : `/${route}`;
-
-        const request = HTTP.request({
-            host: config.get(Server.PARAMETER_HOST),
-            port: config.get(Server.PARAMETER_PORT),
-            path,
-            method: 'GET'
-        }, response => {
-            let data = '';
-
-            response.on('error', reject);
-            response.on('data', chunk => data += chunk);
-            response.on('close', () => {
-                switch (response.statusCode) {
-                    case CoreJS.ResponseCode.OK:
-                        resolve(data.toString());
-                        break;
+                        // starts the server
+                        // and retry exec
+                        return commander
+                            .execute('start', { config: '' })
+                            .then(() => commander.execute('exec', Object.assign({}, args, {
+                                config: '',
+                                start: false
+                            })))
+                            .then(resolve)
+                            .catch(reject);
 
                     default:
-                        resolve(`Error ${response.statusCode}: ${data.toString()}`);
-                        break;
+                        return reject(error);
                 }
             });
-        });
 
-        request.on('error', reject);
-        request.end();
-    })
+            request.end();
+        });
+    }
 });
 
 commander.set({
     name: 'config.get',
     description: "returns the config",
     parameters: new CoreJS.ParameterList(
-        new CoreJS.NumberParameter('space', 'serialization option space', 4),
-        new CoreJS.StringParameter('path', 'config file path', 'config')
+        new CoreJS.NumberParameter('space', 'serialization option space', 4)
+    ),
+    execute: async args => JSON.stringify(config, null, args.space)
+});
+
+commander.set({
+    name: 'config.load',
+    description: "loads an additional config file",
+    parameters: new CoreJS.ParameterList(
+        new CoreJS.StringParameter('path', 'config file path')
     ),
     execute: async args => {
         const path = `configs/${args.path}.json`;
 
-        if (FS.existsSync(path))
-            config.deserialize(BackendJS.loadConfig(path));
-        else
-            FS.writeFileSync(path, JSON.stringify(config, null, args.space));
+        if (!FS.existsSync(path))
+            return `not existing config file at '${path}'`;
 
-        return JSON.stringify(config, null, args.space);
+        config.deserialize(BackendJS.loadConfig(path));
+        config.deserialize(globalArgs);
+
+        return `additional config loaded from '${path}'`;
     }
 });
 
@@ -181,18 +183,22 @@ commander.set({
     description: "writes config to file",
     parameters: new CoreJS.ParameterList(
         new CoreJS.NumberParameter('space', 'serialization option space', 4),
-        new CoreJS.StringParameter('path', 'config file path', 'config'),
+        new CoreJS.ArrayParameter('path', 'config file path', new CoreJS.StringParameter('', ''), ['config']),
         new CoreJS.BoolParameter('force', 'overwrites existing config file', false)
     ),
     execute: async args => {
-        const path = `configs/${args.path}.json`;
+        const result = await Promise.all(args.path.map(async path => {
+            path = `configs/${path}.json`;
 
-        if (FS.existsSync(path) && !args.force)
-            return `config file already exist at '${path}'\n`;
+            if (FS.existsSync(path) && !args.force)
+                return `config file already exist at '${path}'`;
 
-        FS.writeFileSync(path, JSON.stringify(config, null, args.space));
+            FS.writeFileSync(path, JSON.stringify(config, null, args.space));
 
-        return `config written to file at '${path}'\n`;
+            return `config written to file at '${path}'`;
+        }));
+
+        return result.join('\n') + '\n';
     }
 });
 
@@ -207,8 +213,7 @@ commander.set({
 });
 
 commander
-    .execute(command, args)
+    .execute(command, globalArgs)
     .then(result => process.stdout.write(result))
     .catch(error => process.stdout.write(error.stack))
-    .then(() => log.close())
     .then(() => process.exit()); 
