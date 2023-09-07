@@ -84,7 +84,9 @@ commander.set({
             server.start();
         }
 
-        return "started\n";
+        return server && server.isRunning
+            ? `started to listen on ${server.endpoint}\n`
+            : `started\n`;
     }
 });
 

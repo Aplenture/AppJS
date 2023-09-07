@@ -120,7 +120,7 @@ export class Server {
         this._htmlInfoResponse = new CoreJS.HTMLResponse(this.toHTML());
         this._jsonInfoResponse = new CoreJS.Response(JSON.stringify(this), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
 
-        this.onMessage.emit(this, `started (debug mode: ${CoreJS.parseFromBool(this.debug)})`);
+        this.onMessage.emit(this, `listen on '${this._endpoint}' (debug mode: ${CoreJS.parseFromBool(this.debug)})`);
 
         return new Promise<void>(resolve => this._stopAction = () => {
             server.close();
