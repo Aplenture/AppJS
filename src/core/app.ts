@@ -158,7 +158,7 @@ export class App {
             try {
                 const module = BackendJS.loadModule<BackendJS.Module.Module<any, any, any>>(data, args, data.options);
 
-                module.onMessage.on(message => this.onMessage.emit(this, message));
+                module.onMessage.on((message, sender) => this.onMessage.emit(this, `${sender.name} module - ${message}`));
 
                 return module;
             } catch (error) {
@@ -183,14 +183,12 @@ export class App {
     public async init() {
         const routes = this.config.get<NodeJS.ReadOnlyDict<RouteData>>(App.PARAMETER_ROUTES);
 
+        this.onMessage.emit(this, `init`);
+
         for (const key in this._routes)
             delete this._routes[key];
 
-        await Promise.all(this.modules.map(module => {
-            this.onMessage.emit(this, `init module ${this.name}/${module.name}`);
-
-            return module.init();
-        }));
+        await Promise.all(this.modules.map(module => module.init()));
 
         const moduleDatas = this.modules.map(module => module.toJSON());
 
@@ -200,7 +198,7 @@ export class App {
             if (!name)
                 throw new Error(`route at index '${routeIndex}' has invalid name`);
 
-            this.onMessage.emit(this, `loading route ${this.name}/${name}`);
+            this.onMessage.emit(this, `loading route '${name}'`);
 
             if (!data.paths || !data.paths.length)
                 throw new Error(`route '${name}' needs to have at least one path`);
@@ -269,14 +267,12 @@ export class App {
     }
 
     public async deinit() {
+        this.onMessage.emit(this, `deinit`);
+
         for (const key in this._routes)
             delete this._routes[key];
 
-        await Promise.all(this.modules.map(module => {
-            this.onMessage.emit(this, `deinit module ${this.name}/${module.name}`);
-
-            return module.deinit();
-        }));
+        await Promise.all(this.modules.map(module => module.deinit()));
     }
 
     public async execute(route?: string, args?: NodeJS.ReadOnlyDict<any>): Promise<CoreJS.Response> {
