@@ -12,7 +12,6 @@ import * as HTTPS from "https";
 import { App } from "./app";
 
 export class Server {
-    public static readonly PARAMETER_ENDPOINT = 'endpoint';
     public static readonly PARAMETER_HTTPS = 'https';
     public static readonly PARAMETER_PORT = 'port';
     public static readonly PARAMETER_HOST = 'host';
@@ -23,7 +22,6 @@ export class Server {
     public static readonly PARAMETER_RESPONSE_HEADERS = 'responseHeaders';
 
     public static readonly Parameters: readonly CoreJS.Parameter<any>[] = [
-        new CoreJS.StringParameter(Server.PARAMETER_ENDPOINT, 'the domain of this server', 'http://localhost:4431'),
         new CoreJS.BoolParameter(Server.PARAMETER_HTTPS, 'switch between http and https', false),
         new CoreJS.StringParameter(Server.PARAMETER_HOST, 'of server', 'localhost'),
         new CoreJS.NumberParameter(Server.PARAMETER_PORT, 'of server', 4431),
@@ -37,14 +35,16 @@ export class Server {
     public readonly onMessage = new CoreJS.Event<Server, string>('Server.onMessage');
     public readonly onError = new CoreJS.Event<Server, Error>('Server.onError');
 
-    private readonly allowedRequestHeaders: readonly string[];
-    private readonly responseHeaders: NodeJS.ReadOnlyDict<HTTP.OutgoingHttpHeader>;
-    private readonly allowedOrigins: readonly string[];
+    private readonly _allowedRequestHeaders: readonly string[];
+    private readonly _responseHeaders: NodeJS.ReadOnlyDict<HTTP.OutgoingHttpHeader>;
+    private readonly _allowedOrigins: readonly string[];
 
-    private stopAction: () => void = null;
-    private textInfoResponse: CoreJS.Response;
-    private htmlInfoResponse: CoreJS.Response;
-    private jsonInfoResponse: CoreJS.Response;
+    private _stopAction: () => void = null;
+    private _textInfoResponse: CoreJS.Response;
+    private _htmlInfoResponse: CoreJS.Response;
+    private _jsonInfoResponse: CoreJS.Response;
+
+    private _endpoint: string;
 
     constructor(
         public readonly app: App,
@@ -52,25 +52,27 @@ export class Server {
     ) {
         const defaultResponseHeaders = Object.assign({}, config.get(Server.PARAMETER_RESPONSE_HEADERS));
 
-        this.responseHeaders = defaultResponseHeaders;
-        this.allowedRequestHeaders = config.get<string[]>(Server.PARAMETER_ALLOWED_REQUEST_HEADERS);
-        this.allowedOrigins = config.get<string[]>(Server.PARAMETER_ALLOWED_ORIGINS)
+        this._responseHeaders = defaultResponseHeaders;
+        this._allowedRequestHeaders = config.get<string[]>(Server.PARAMETER_ALLOWED_REQUEST_HEADERS);
+        this._allowedOrigins = config.get<string[]>(Server.PARAMETER_ALLOWED_ORIGINS)
 
-        if (0 == this.allowedOrigins.length)
-            this.allowedOrigins = ['*'];
+        if (0 == this._allowedOrigins.length)
+            this._allowedOrigins = ['*'];
 
-        defaultResponseHeaders[CoreJS.ResponseHeader.AllowHeaders] = this.allowedRequestHeaders.join(',');
-        defaultResponseHeaders[CoreJS.ResponseHeader.AllowOrigin] = this.allowedOrigins.join(',');
+        defaultResponseHeaders[CoreJS.ResponseHeader.AllowHeaders] = this._allowedRequestHeaders.join(',');
+        defaultResponseHeaders[CoreJS.ResponseHeader.AllowOrigin] = this._allowedOrigins.join(',');
     }
 
-    public get isRunning(): boolean { return !!this.stopAction; }
+    public get isRunning(): boolean { return !!this._stopAction; }
     public get debug(): boolean { return this.app.debug; }
-    public get endpoint(): string { return this.config.get(Server.PARAMETER_ENDPOINT); }
+    public get endpoint(): string { return this._endpoint; }
 
     public start() {
         if (this.isRunning) throw new Error('server is running already');
 
-        if (this.config.get(Server.PARAMETER_HTTPS)) {
+        const isHTTPS = this.config.get<boolean>(Server.PARAMETER_HTTPS);
+
+        if (isHTTPS) {
             if (!this.config.has(Server.PARAMETER_KEY))
                 throw new Error(`config parameter '${Server.PARAMETER_KEY}' is needed when '${Server.PARAMETER_HTTPS} is enabled'`);
 
@@ -84,7 +86,10 @@ export class Server {
                 throw new Error(`ssl certificate at '${this.config.get(Server.PARAMETER_CERT)}' does not exist`);
         }
 
-        const server = this.config.get(Server.PARAMETER_HTTPS)
+        const host = this.config.get<string>(Server.PARAMETER_HOST);
+        const port = this.config.get<number>(Server.PARAMETER_PORT);
+
+        const server = isHTTPS
             ? HTTPS.createServer({
                 key: FS.readFileSync(this.config.get(Server.PARAMETER_KEY)),
                 cert: FS.readFileSync(this.config.get(Server.PARAMETER_CERT))
@@ -92,20 +97,19 @@ export class Server {
             : HTTP.createServer((request, response) => this.onRequest(request, response));
 
         server.on('error', error => this.onError.emit(this, error));
-        server.listen({
-            host: this.config.get(Server.PARAMETER_HOST),
-            port: this.config.get(Server.PARAMETER_PORT)
-        });
+        server.listen({ host, port });
+
+        this._endpoint = `${isHTTPS ? 'https' : 'http'}://${host}:${port}/`;
+
+        this._textInfoResponse = new CoreJS.TextResponse(this.toString());
+        this._htmlInfoResponse = new CoreJS.HTMLResponse(this.toHTML());
+        this._jsonInfoResponse = new CoreJS.Response(JSON.stringify(this), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
 
         this.onMessage.emit(this, `server started (debug mode: ${CoreJS.parseFromBool(this.debug)})`);
 
-        this.textInfoResponse = new CoreJS.TextResponse(this.toString());
-        this.htmlInfoResponse = new CoreJS.HTMLResponse(this.toHTML());
-        this.jsonInfoResponse = new CoreJS.Response(JSON.stringify(this), CoreJS.ResponseType.JSON, CoreJS.ResponseCode.OK);
-
-        return new Promise<void>(resolve => this.stopAction = () => {
+        return new Promise<void>(resolve => this._stopAction = () => {
             server.close();
-            this.stopAction = null;
+            this._stopAction = null;
             this.onMessage.emit(this, 'server stopped');
             resolve();
         });
@@ -115,7 +119,7 @@ export class Server {
         if (!this.isRunning)
             return;
 
-        this.stopAction();
+        this._stopAction();
     }
 
     public toString() {
@@ -129,9 +133,9 @@ export class Server {
 
         result += `\nEndpoint: ${this.endpoint}\n`;
 
-        if (this.allowedRequestHeaders.length) {
+        if (this._allowedRequestHeaders.length) {
             result += '\nAllowed Request Headers:\n';
-            result += this.allowedRequestHeaders.join('\n');
+            result += this._allowedRequestHeaders.join('\n');
         }
 
         result += '\nRoutes:\n';
@@ -148,7 +152,7 @@ export class Server {
             author: this.app.author,
             description: this.app.description,
             repository: this.app.repository,
-            allowedRequestHeaders: this.allowedRequestHeaders,
+            allowedRequestHeaders: this._allowedRequestHeaders,
             routes: Object.keys(this.app.routes).map(path => ({
                 path,
                 description: this.app.routes[path].description,
@@ -172,9 +176,9 @@ export class Server {
 
         result += `<h3>Endpoint</h3><a href="${this.endpoint}">${this.endpoint}</a>`;
 
-        if (this.allowedRequestHeaders.length) {
+        if (this._allowedRequestHeaders.length) {
             result += '<h3>Allowed Headers</h3>';
-            result += this.allowedRequestHeaders.join('</br>');
+            result += this._allowedRequestHeaders.join('</br>');
         }
 
         result += '<h3>Routes</h3>';
@@ -188,12 +192,12 @@ export class Server {
 
         stopwatch.start();
 
-        const responseHeaders: NodeJS.Dict<HTTP.OutgoingHttpHeader> = Object.assign({}, this.responseHeaders);
+        const responseHeaders: NodeJS.Dict<HTTP.OutgoingHttpHeader> = Object.assign({}, this._responseHeaders);
 
         responseHeaders[CoreJS.ResponseHeader.ContentType] = CoreJS.ResponseType.Text;
 
         // catch invalid origins
-        if (!this.allowedOrigins.includes(request.headers.origin) && !this.allowedOrigins.includes('*')) {
+        if (!this._allowedOrigins.includes(request.headers.origin) && !this._allowedOrigins.includes('*')) {
             response.writeHead(CoreJS.ResponseCode.Forbidden, responseHeaders);
             response.end();
             return;
@@ -223,15 +227,15 @@ export class Server {
         );
 
         // parse args by allowed request headers
-        this.allowedRequestHeaders.forEach(key => args[key] = request.headers[key]);
+        this._allowedRequestHeaders.forEach(key => args[key] = request.headers[key]);
 
         const result: CoreJS.Response = route
             ? await this.app.execute(route, args)
             : args.html
-                ? this.htmlInfoResponse
+                ? this._htmlInfoResponse
                 : args.text
-                    ? this.textInfoResponse
-                    : this.jsonInfoResponse;
+                    ? this._textInfoResponse
+                    : this._jsonInfoResponse;
 
         responseHeaders[CoreJS.ResponseHeader.ContentType] = result.type;
 
