@@ -13,6 +13,7 @@
         "postinstall": "npm run build; node dist/index config.create --path config.json --path local.json --path server.json",
         "start": "node dist/index start",
         "exec": "node dist/index exec",
+        "script": "node dist/index script",
         "help": "node dist/index help",
         "clear": "node dist/index log.clear",
         "config.get": "node dist/index config.get",

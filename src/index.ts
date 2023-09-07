@@ -8,11 +8,14 @@
 import * as BackendJS from "backendjs";
 import * as CoreJS from "corejs";
 import * as FS from "fs";
+import * as Readline from "readline";
 import { App, Server } from "./core";
 
 const PARAMETER_LOGFILE = 'logfile';
-const PATH_CONFIG = 'configs/';
 const DEFAULT_CONFIG = 'config.json';
+
+const PATH_CONFIGS = 'configs/';
+const PATH_SCRIPTS = 'scripts/';
 
 const command = process.argv[2];
 const route = process.argv[3] && 0 != process.argv[3].indexOf('-')
@@ -28,10 +31,11 @@ const commander = new CoreJS.Commander();
 let log: BackendJS.Log.Log;
 let app: App;
 let server: Server;
+let scriptSpace = 0;
 
 config.add(new CoreJS.StringParameter(PARAMETER_LOGFILE, 'file path of log file', './app.log'));
 config.set(App.PARAMETER_VERSION, infos.version);
-config.deserialize(BackendJS.loadConfig(PATH_CONFIG + DEFAULT_CONFIG));
+config.deserialize(BackendJS.loadConfig(PATH_CONFIGS + DEFAULT_CONFIG));
 config.deserialize(globalArgs);
 
 commander.set({
@@ -124,6 +128,45 @@ commander.set({
     }
 });
 
+commander.set({
+    name: 'script',
+    description: 'loads and executes a script file',
+    parameters: new CoreJS.ParameterList(
+        new CoreJS.StringParameter('path', 'script file path', 'script.txt')
+    ),
+    execute: async args => {
+        const path = `${PATH_SCRIPTS}${args.path}`;
+
+        if (!FS.existsSync(path))
+            return `not existing script file at '${path}'\n`;
+
+        const coldStart = !!app;
+
+        if (coldStart)
+            await commander.execute("start", { server: false });
+
+        const readline = Readline.createInterface({
+            input: FS.createReadStream(path)
+        });
+
+        const space = " ".repeat(scriptSpace);
+
+        let result = `executing script ${path}...`;
+
+        scriptSpace = 3;
+
+        for await (const line of readline) {
+            result += '\n' + space + '>> ' + line + '\n';
+            result += ('<< ' + await commander.executeLine(line)).replace(/^(.)/gm, space + '$1') + '\n';
+        }
+
+        if (coldStart)
+            await commander.execute("stop");
+
+        return result;
+    }
+});
+
 commander.set(...config.createCommands());
 commander.set({
     name: 'config.load',
@@ -132,15 +175,15 @@ commander.set({
         new CoreJS.StringParameter('path', 'config file path')
     ),
     execute: async args => {
-        const path = `${PATH_CONFIG}${args.path}`;
+        const path = `${PATH_CONFIGS}${args.path}`;
 
         if (!FS.existsSync(path))
-            return `not existing config file at '${path}'`;
+            return `not existing config file at '${path}'\n`;
 
         config.deserialize(BackendJS.loadConfig(path));
         config.deserialize(globalArgs);
 
-        return `additional config loaded from '${path}'`;
+        return `additional config loaded from '${path}'\n`;
     }
 });
 
@@ -154,14 +197,14 @@ commander.set({
     ),
     execute: async args => {
         const result = await Promise.all(args.path.map(async path => {
-            path = `${PATH_CONFIG}${path}`;
+            path = `${PATH_CONFIGS}${path}`;
 
             if (FS.existsSync(path) && !args.force)
-                return `config file already exist at '${path}'`;
+                return `config file already exist at '${path}'\n`;
 
             FS.writeFileSync(path, JSON.stringify(config, null, args.space));
 
-            return `config written to file at '${path}'`;
+            return `config written to file at '${path}'\n`;
         }));
 
         return result.join('\n') + '\n';
