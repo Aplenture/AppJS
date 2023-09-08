@@ -10,17 +10,15 @@
     "scripts": {
         "build": "rm -rf dist; mkdir dist; tsc -p tsconfig.json; npm test",
         "test": "mocha -r ts-node/register 'tests/**/*.ts' --timeout 6000",
-        "postinstall": "npm run build; node dist/index config.create --path config.json --path local.json --path server.json",
-        "start": "node dist/index start",
-        "exec": "node dist/index exec",
-        "script": "node dist/index script",
+        "postinstall": "npm run build; node dist/index config.create --path config.json",
         "help": "node dist/index help",
-        "clear": "node dist/index log.clear",
-        "config.get": "node dist/index config.get",
-        "config.serialize": "node dist/index config.serialize",
-        "update": "node dist/index exec --route update",
-        "reset": "node dist/index exec --route reset",
-        "revert": "node dist/index exec --route revert"
+        "exec": "node dist/index",
+        "script": "node dist/index script",
+        "start": "node dist/index script --path start.txt",
+        "clear": "node dist/index script --path clear.txt",
+        "update": "node dist/index script --path update.txt",
+        "reset": "node dist/index script --path reset.txt",
+        "revert": "node dist/index script --path revert.txt"
     },
     "repository": {
         "type": "git",

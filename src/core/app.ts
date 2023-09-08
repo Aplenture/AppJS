@@ -8,6 +8,19 @@
 import * as BackendJS from "backendjs";
 import * as CoreJS from "corejs";
 
+export enum AppParameter {
+    Name = 'name',
+    Version = 'version',
+    Author = 'author',
+    Description = 'description',
+    Repository = 'repository',
+    Modules = 'modules',
+    Class = 'class',
+    Path = 'path',
+    Options = 'options',
+    Routes = 'routes'
+}
+
 const DEFAULT_MODULES: ModuleData[] = [{
     class: "Module",
     path: "./node_modules/backendjs/dist/account/core/module",
@@ -114,47 +127,54 @@ interface Route {
 type ModuleData = BackendJS.LoadModuleConfig & { readonly options?: any; };
 
 export class App {
-    public static readonly PARAMETER_DEBUG = 'debug';
-    public static readonly PARAMETER_NAME = 'name';
-    public static readonly PARAMETER_VERSION = 'version';
-    public static readonly PARAMETER_AUTHOR = 'author';
-    public static readonly PARAMETER_DESCRIPTION = 'description';
-    public static readonly PARAMETER_REPOSITORY = 'repository';
-    public static readonly PARAMETER_MODULES = 'modules';
-    public static readonly PARAMETER_CLASS = 'class';
-    public static readonly PARAMETER_PATH = 'path';
-    public static readonly PARAMETER_OPTIONS = 'options';
-    public static readonly PARAMETER_ROUTES = 'routes';
-
-    public static readonly Parameters: readonly CoreJS.Parameter<any>[] = [
-        new CoreJS.BoolParameter(App.PARAMETER_DEBUG, 'enables/disables debug mode', false),
-        new CoreJS.StringParameter(App.PARAMETER_NAME, 'name of the app', '<my_app_name>'),
-        new CoreJS.StringParameter(App.PARAMETER_VERSION, 'version of the app', '1.0'),
-        new CoreJS.StringParameter(App.PARAMETER_AUTHOR, 'author of the app', '<author_name>'),
-        new CoreJS.StringParameter(App.PARAMETER_DESCRIPTION, 'description of the app', '<my_app_description>'),
-        new CoreJS.StringParameter(App.PARAMETER_REPOSITORY, 'repository of the app', 'https://github.com/Aplenture/AppJS.git'),
-        new CoreJS.ArrayParameter<ModuleData>(App.PARAMETER_MODULES, 'installed app modules', new CoreJS.DictionaryParameter('', '', [
-            new CoreJS.StringParameter(App.PARAMETER_CLASS, 'class name of the module'),
-            new CoreJS.StringParameter(App.PARAMETER_PATH, 'to the module class'),
-            new CoreJS.DictionaryParameter(App.PARAMETER_OPTIONS, 'from the module', [], {})
-        ]), DEFAULT_MODULES),
-        new CoreJS.DictionaryParameter(App.PARAMETER_ROUTES, 'all executable routes', undefined, DEFAULT_ROUTES)
-    ];
-
     public readonly onMessage = new CoreJS.Event<App, string>('App.onMessage');
     public readonly onError = new CoreJS.Event<App, Error>('App.onError');
 
-    private readonly modules: readonly BackendJS.Module.Module<any, any, any>[] = [];
-    private readonly invalidRouteResponse: CoreJS.ErrorResponse;
-
+    private _initialized = false;
+    private _modules: readonly BackendJS.Module.Module<any, any, any>[] = [];
     private _routes: NodeJS.Dict<Route> = {};
+    private _invalidRouteResponse: CoreJS.ErrorResponse;
 
-    constructor(public readonly config: CoreJS.Config, args: NodeJS.ReadOnlyDict<any> = {}) {
-        this.invalidRouteResponse = this.debug
-            ? new CoreJS.ErrorResponse(CoreJS.ResponseCode.Forbidden, '#_invalid_route')
-            : CoreJS.RESPONSE_NO_CONTENT;
+    constructor(public readonly config: CoreJS.Config) {
+        config.onChange.on(() => this.onDebugChanged(this.debug), { args: BackendJS.Module.GlobalParamterName.Debug });
 
-        this.modules = config.get<readonly ModuleData[]>(App.PARAMETER_MODULES).map(data => {
+        // add global module parameters to config
+        BackendJS.Module.GlobalParameters.forEach(param => config.add(param));
+
+        config.add(new CoreJS.StringParameter(AppParameter.Name, 'name of the app', '<my_app_name>'));
+        config.add(new CoreJS.StringParameter(AppParameter.Version, 'version of the app', '1.0'));
+        config.add(new CoreJS.StringParameter(AppParameter.Author, 'author of the app', '<author_name>'));
+        config.add(new CoreJS.StringParameter(AppParameter.Description, 'description of the app', '<my_app_description>'));
+        config.add(new CoreJS.StringParameter(AppParameter.Repository, 'repository of the app', 'https://github.com/Aplenture/AppJS.git'));
+        config.add(new CoreJS.ArrayParameter<ModuleData>(AppParameter.Modules, 'installed app modules', new CoreJS.DictionaryParameter('', '', [
+            new CoreJS.StringParameter(AppParameter.Class, 'class name of the module'),
+            new CoreJS.StringParameter(AppParameter.Path, 'to the module class'),
+            new CoreJS.DictionaryParameter(AppParameter.Options, 'from the module', [], {})
+        ]), DEFAULT_MODULES));
+
+        config.add(new CoreJS.DictionaryParameter(AppParameter.Routes, 'all executable routes', undefined, DEFAULT_ROUTES));
+
+        this.onDebugChanged(this.debug);
+    }
+
+    public get isInitialized(): boolean { return this._initialized; }
+    public get name(): string { return this.config.get(AppParameter.Name); }
+    public get debug(): boolean { return this.config.get(BackendJS.Module.GlobalParamterName.Debug); }
+    public get version(): string { return this.config.get(AppParameter.Version); }
+    public get author(): string { return this.config.get(AppParameter.Author); }
+    public get description(): string { return this.config.get(AppParameter.Description); }
+    public get repository(): string { return this.config.get(AppParameter.Repository); }
+    public get routes(): NodeJS.ReadOnlyDict<Route> { return this._routes; }
+
+    public async init(args: NodeJS.ReadOnlyDict<any> = {}) {
+        const routes = this.config.get<NodeJS.ReadOnlyDict<RouteData>>(AppParameter.Routes);
+
+        this._initialized = true;
+
+        this.onMessage.emit(this, `init`);
+
+        this._routes = {};
+        this._modules = this.config.get<readonly ModuleData[]>(AppParameter.Modules).map(data => {
             try {
                 const module = BackendJS.loadModule<BackendJS.Module.Module<any, any, any>>(data, args, data.options);
 
@@ -170,27 +190,10 @@ export class App {
                 throw error;
             }
         });
-    }
 
-    public get name(): string { return this.config.get(App.PARAMETER_NAME); }
-    public get debug(): boolean { return this.config.get(App.PARAMETER_DEBUG); }
-    public get version(): string { return this.config.get(App.PARAMETER_VERSION); }
-    public get author(): string { return this.config.get(App.PARAMETER_AUTHOR); }
-    public get description(): string { return this.config.get(App.PARAMETER_DESCRIPTION); }
-    public get repository(): string { return this.config.get(App.PARAMETER_REPOSITORY); }
-    public get routes(): NodeJS.ReadOnlyDict<Route> { return this._routes; }
+        await Promise.all(this._modules.map(module => module.init()));
 
-    public async init() {
-        const routes = this.config.get<NodeJS.ReadOnlyDict<RouteData>>(App.PARAMETER_ROUTES);
-
-        this.onMessage.emit(this, `init`);
-
-        for (const key in this._routes)
-            delete this._routes[key];
-
-        await Promise.all(this.modules.map(module => module.init()));
-
-        const moduleDatas = this.modules.map(module => module.toJSON());
+        const moduleDatas = this._modules.map(module => module.toJSON());
 
         Object.keys(routes).forEach((name, routeIndex) => {
             const data = routes[name];
@@ -214,7 +217,7 @@ export class App {
                     throw new Error(`missing module name of route '${name}' at path index '${pathIndex}'`)
 
                 const moduleName = split[0].toLowerCase();
-                const module = this.modules.find(module => module.name.toLowerCase() === moduleName);
+                const module = this._modules.find(module => module.name.toLowerCase() === moduleName);
 
                 if (!module)
                     throw new Error(`module with name '${split[0]}' does not exist`);
@@ -267,12 +270,17 @@ export class App {
     }
 
     public async deinit() {
+        if (!this._initialized)
+            return;
+
+        this._initialized = false;
+
         this.onMessage.emit(this, `deinit`);
 
-        for (const key in this._routes)
-            delete this._routes[key];
+        await Promise.all(this._modules.map(module => module.deinit()));
 
-        await Promise.all(this.modules.map(module => module.deinit()));
+        this._routes = {};
+        this._modules = [];
     }
 
     public async execute(route?: string, args?: NodeJS.ReadOnlyDict<any>): Promise<CoreJS.Response> {
@@ -282,7 +290,7 @@ export class App {
         const routeData = this._routes[route.toLowerCase()];
 
         if (!routeData)
-            return this.invalidRouteResponse;
+            return this._invalidRouteResponse;
 
         try {
             // parse args by all route command params
@@ -315,6 +323,12 @@ export class App {
         const args = CoreJS.parseArgsFromString(route.substring(command.length));
 
         return this.execute(command, args);
+    }
+
+    private onDebugChanged(debug: boolean) {
+        this._invalidRouteResponse = this.debug
+            ? new CoreJS.ErrorResponse(CoreJS.ResponseCode.Forbidden, '#_invalid_route')
+            : CoreJS.RESPONSE_NO_CONTENT;
     }
 
     public toString() {

@@ -9,74 +9,101 @@ import * as BackendJS from "backendjs";
 import * as CoreJS from "corejs";
 import * as FS from "fs";
 import * as Readline from "readline";
-import { App, Server } from "./core";
+import { App, AppParameter, Server } from "./core";
 
-const PARAMETER_LOGFILE = 'logfile';
-const DEFAULT_CONFIG = 'config.json';
+enum Paramter {
+    Logfile = 'logfile'
+}
 
-const PATH_CONFIGS = 'configs/';
-const PATH_SCRIPTS = 'scripts/';
+enum Path {
+    Configs = 'configs/',
+    Scripts = 'scripts/',
+    Logs = 'logs/'
+}
 
-const globalArgs = CoreJS.parseArgsFromString(process.argv.slice(3).join(' '));
-const config = new CoreJS.Config(...App.Parameters, ...Server.Parameters, ...BackendJS.Module.GlobalParameters);
-const infos = BackendJS.loadConfig('package.json');
-const commander = new CoreJS.Commander();
+const config = new CoreJS.Config();
 
 let log: BackendJS.Log.Log;
-let app: App;
-let server: Server;
-let scriptSpace = 0;
 
-config.add(new CoreJS.StringParameter(PARAMETER_LOGFILE, 'file path of log file', './app.log'));
-config.set(App.PARAMETER_VERSION, infos.version);
-config.deserialize(BackendJS.loadConfig(PATH_CONFIGS + DEFAULT_CONFIG));
-config.deserialize(globalArgs);
+// listen to log file config changes
+config.onChange.on((key, config) => {
+    const filepath = Path.Logs + config.get<string>(key);
+
+    if (log)
+        log.write(`switch log file to '${filepath}'`)
+
+    log = BackendJS.Log.Log.createFileLog(filepath);
+}, { args: Paramter.Logfile });
+
+// add log file paramter to config
+config.add(new CoreJS.StringParameter(Paramter.Logfile, 'file path of log file', 'app.log'));
+
+process.on('exit', code => code && process.stdout.write(`exit with code ${code}\n`));
+process.on('uncaughtException', error => log.error(error));
+process.on('unhandledRejection', reason => log.error(reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
+
+// listen to config changes before adding app and server parameters
+config.onChange.on((key, config) => log.write(`debug mode changed to '${config.get(key)}'`), { args: BackendJS.Module.GlobalParamterName.Debug });
+
+const app = new App(config);
+const server = new Server(app, config);
+
+app.onMessage.on(message => log.write(message, 'App'));
+app.onError.on(error => log.error(error, 'App'));
+
+server.onMessage.on(message => log.write(message, 'Server'));
+server.onError.on(error => log.error(error, 'Server'));
+
+// listen to config changes after adding app and server parameters
+config.onChange.on(() => process.title = app.name, { args: AppParameter.Name });
+
+const infos = BackendJS.loadConfig('package.json');
+
+config.set(AppParameter.Version, infos.version);
+
+const commander = new CoreJS.Commander();
+
+commander.onMessage.on(message => log.write(message, 'Commander'));
+
+process.on('SIGINT', () => commander.execute('stop'));
+process.on('SIGUSR1', () => commander.execute('stop'));
+process.on('SIGUSR2', () => commander.execute('stop'));
 
 commander.set({
     name: 'start',
     description: "starts the server",
-    parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('config', 'filepath of additional config', 'server.json'),
-        new CoreJS.BoolParameter('server', 'starts also the server', true)
-    ),
     execute: async args => {
-        if (app)
-            return "already running\n";
+        // load args to config
+        config.deserialize(args);
 
-        const additionalConfigPath: string = args.config;
-        const startServer: string = args.server;
+        // remove all previous app routes from commander
+        commander.remove(...Object.keys(app.routes).map(route => 'app.' + route));
 
-        delete args.config;
-        delete args.server;
-
-        // deserialize additional config
-        if (additionalConfigPath)
-            await commander.execute('config.load', { path: additionalConfigPath });
-
-        log = BackendJS.Log.Log.createFileLog(config.get(PARAMETER_LOGFILE));
-        log.write(`loaded config '${DEFAULT_CONFIG}'`);
-        if (additionalConfigPath) log.write(`loaded config '${additionalConfigPath}'`);
-
-        process.on('exit', code => code && process.stdout.write(`exit with code ${code}\n`));
-        process.on('SIGINT', () => commander.execute('stop'));
-        process.on('SIGUSR1', () => commander.execute('stop'));
-        process.on('SIGUSR2', () => commander.execute('stop'));
-        process.on('uncaughtException', error => log.error(error));
-        process.on('unhandledRejection', reason => log.error(reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
-
-        app = new App(config, args);
-        app.onMessage.on((message, sender) => log.write(message, sender.name + ' (App)'));
-        app.onError.on((error, sender) => log.error(error, sender.name + ' (App)'));
+        await app.deinit();
         await app.init();
 
-        process.title = app.name;
+        // add app routes as commands to commander
+        commander.set(...Object.keys(app.routes).map(route => {
+            const data = app.routes[route];
 
-        if (startServer) {
-            server = new Server(app, config);
-            server.onMessage.on((message, sender) => log.write(message, sender.app.name + ' (Server)'));
-            server.onError.on((error, sender) => log.error(error, sender.app.name + ' (Server)'));
-            server.start();
-        }
+            return {
+                name: 'app.' + route,
+                description: data.description,
+                parameters: data.parameters,
+                execute: async args => app.execute(route, args).then(result => {
+                    switch (result.code) {
+                        case CoreJS.ResponseCode.OK:
+                        case CoreJS.ResponseCode.NoContent:
+                            return result.data;
+
+                        default:
+                            throw new CoreJS.CoreError(result.code, result.data);
+                    }
+                })
+            }
+        }));
+
+        server.start();
 
         return server && server.isRunning
             ? `started to listen on ${server.endpoint}\n`
@@ -88,63 +115,27 @@ commander.set({
     name: 'stop',
     description: "stops the server",
     execute: async args => {
-        if (server)
-            await server.stop();
-
-        if (app)
-            await app.deinit();
-
-        if (log)
-            await log.close();
+        await server.stop();
+        await app.deinit();
+        await log.close();
 
         return "stopped\n";
     }
 });
 
-commander.set({
-    name: 'exec',
-    description: 'sends request to a server instance',
-    parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('route', 'route name', ''),
-        new CoreJS.StringParameter('config', 'filepath of additional config', 'local.json')
-    ),
-    execute: async args => {
-        const route: string = args.route;
-
-        delete args.route;
-
-        if (app)
-            return await app.execute(route, args)
-                .then(result => result.data);
-
-        args.server = false;
-
-        await commander.execute('start', args);
-
-        const result = await app.execute(route, args);
-
-        await commander.execute("stop");
-
-        return result.data;
-    }
-});
+let scriptSpace = 0;
 
 commander.set({
     name: 'script',
-    description: 'loads and executes a script file',
+    description: 'executes a script file',
     parameters: new CoreJS.ParameterList(
-        new CoreJS.StringParameter('path', 'script file path', 'script.txt')
+        new CoreJS.StringParameter('path', 'script file path')
     ),
     execute: async args => {
-        const path = `${PATH_SCRIPTS}${args.path}`;
+        const path = `${Path.Scripts}${args.path}`;
 
         if (!FS.existsSync(path))
             return `not existing script file at '${path}'\n`;
-
-        const coldStart = !!app;
-
-        if (coldStart)
-            await commander.execute("start", { server: false });
 
         const readline = Readline.createInterface({
             input: FS.createReadStream(path)
@@ -161,9 +152,6 @@ commander.set({
             result += ('<< ' + await commander.executeLine(line)).replace(/^(.)/gm, space + '$1') + '\n';
         }
 
-        if (coldStart)
-            await commander.execute("stop");
-
         return result;
     }
 });
@@ -176,15 +164,15 @@ commander.set({
         new CoreJS.StringParameter('path', 'config file path')
     ),
     execute: async args => {
-        const path = `${PATH_CONFIGS}${args.path}`;
+        const path = `${Path.Configs}${args.path}`;
 
         if (!FS.existsSync(path))
             return `not existing config file at '${path}'\n`;
 
+        log.write(`load config file '${path}'`);
         config.deserialize(BackendJS.loadConfig(path));
-        config.deserialize(globalArgs);
 
-        return `additional config loaded from '${path}'\n`;
+        return `loaded config file '${path}'\n`;
     }
 });
 
@@ -193,12 +181,12 @@ commander.set({
     description: "writes config to file",
     parameters: new CoreJS.ParameterList(
         new CoreJS.NumberParameter('space', 'serialization option space', 4),
-        new CoreJS.ArrayParameter('path', 'config file path', new CoreJS.StringParameter('', ''), ['config.json']),
+        new CoreJS.ArrayParameter('path', 'config file path', new CoreJS.StringParameter('', '')),
         new CoreJS.BoolParameter('force', 'overwrites existing config file', false)
     ),
     execute: async args => {
         const result = await Promise.all(args.path.map(async path => {
-            path = `${PATH_CONFIGS}${path}`;
+            path = `${Path.Configs}${path}`;
 
             if (FS.existsSync(path) && !args.force)
                 return `config file already exist at '${path}'\n`;
@@ -214,15 +202,24 @@ commander.set({
 
 commander.set({
     name: 'log.clear',
-    description: "clears the log file",
+    description: "clears a log file",
+    parameters: new CoreJS.ParameterList(
+        new CoreJS.StringParameter('path', 'log file path', '')
+    ),
     execute: async args => {
-        await BackendJS.Log.Log.clear(config.get(PARAMETER_LOGFILE));
+        const path = Path.Logs + (args.path || config.get(Paramter.Logfile));
 
-        return `log cleared\n`;
+        if (!FS.existsSync(path))
+            return `not existing log file at '${path}'`;
+
+        await BackendJS.Log.Log.clear(path);
+
+        return `cleared file '${path}'\n`;
     }
 });
 
 commander
-    .executeLine(process.argv.slice(2).join(' '))
+    .executeLine('config.load --path config.json')
+    .then(() => commander.executeLine(process.argv.slice(2).join(' ')))
     .then(result => process.stdout.write(result))
     .catch(error => process.stdout.write(error.stack)); 

@@ -11,38 +11,29 @@ import * as HTTP from "http";
 import * as HTTPS from "https";
 import { App } from "./app";
 
+export enum ServerParameter {
+    Protocol = 'protocol',
+    Port = 'port',
+    Host = 'host',
+    Key = 'sslKey',
+    Cert = 'sslCert',
+    AllowedRequestHeaders = 'requestHeaders',
+    AllowedOrigins = 'allowedOrigins',
+    ResponseHeaders = 'responseHeaders'
+}
+
 export enum Protocol {
     HTTP = "http",
     HTTPS = "https"
 }
 
 export class Server {
-    public static readonly PARAMETER_PROTOCOL = 'protocol';
-    public static readonly PARAMETER_PORT = 'port';
-    public static readonly PARAMETER_HOST = 'host';
-    public static readonly PARAMETER_KEY = 'sslKey';
-    public static readonly PARAMETER_CERT = 'sslCert';
-    public static readonly PARAMETER_ALLOWED_REQUEST_HEADERS = 'requestHeaders';
-    public static readonly PARAMETER_ALLOWED_ORIGINS = 'allowedOrigins';
-    public static readonly PARAMETER_RESPONSE_HEADERS = 'responseHeaders';
-
-    public static readonly Parameters: readonly CoreJS.Parameter<any>[] = [
-        new CoreJS.StringParameter(Server.PARAMETER_PROTOCOL, 'http | https | empty', ''),
-        new CoreJS.StringParameter(Server.PARAMETER_HOST, 'of server', 'localhost'),
-        new CoreJS.NumberParameter(Server.PARAMETER_PORT, 'of server', 4431),
-        new CoreJS.StringParameter(Server.PARAMETER_KEY, 'path to ssl key file', 'key.pem'),
-        new CoreJS.StringParameter(Server.PARAMETER_CERT, 'path to ssl certification file', 'cert.pem'),
-        new CoreJS.ArrayParameter(Server.PARAMETER_ALLOWED_REQUEST_HEADERS, 'allowed server request headers', new CoreJS.StringParameter('', ''), []),
-        new CoreJS.ArrayParameter(Server.PARAMETER_ALLOWED_ORIGINS, 'allowed server origins', new CoreJS.StringParameter('', ''), []),
-        new CoreJS.DictionaryParameter(Server.PARAMETER_RESPONSE_HEADERS, 'additional server response headers', [], {}),
-    ];
-
     public readonly onMessage = new CoreJS.Event<Server, string>('Server.onMessage');
     public readonly onError = new CoreJS.Event<Server, Error>('Server.onError');
 
-    private readonly _allowedRequestHeaders: readonly string[];
-    private readonly _responseHeaders: NodeJS.ReadOnlyDict<HTTP.OutgoingHttpHeader>;
-    private readonly _allowedOrigins: readonly string[];
+    private _allowedRequestHeaders: readonly string[];
+    private _responseHeaders: NodeJS.ReadOnlyDict<HTTP.OutgoingHttpHeader>;
+    private _allowedOrigins: readonly string[];
 
     private _stopAction: () => void = null;
     private _textInfoResponse: CoreJS.Response;
@@ -55,23 +46,20 @@ export class Server {
         public readonly app: App,
         public readonly config: CoreJS.Config
     ) {
-        const defaultResponseHeaders = Object.assign({}, config.get(Server.PARAMETER_RESPONSE_HEADERS));
-
-        this._responseHeaders = defaultResponseHeaders;
-        this._allowedRequestHeaders = config.get<string[]>(Server.PARAMETER_ALLOWED_REQUEST_HEADERS);
-        this._allowedOrigins = config.get<string[]>(Server.PARAMETER_ALLOWED_ORIGINS)
-
-        if (0 == this._allowedOrigins.length)
-            this._allowedOrigins = ['*'];
-
-        defaultResponseHeaders[CoreJS.ResponseHeader.AllowHeaders] = this._allowedRequestHeaders.join(',');
-        defaultResponseHeaders[CoreJS.ResponseHeader.AllowOrigin] = this._allowedOrigins.join(',');
+        config.add(new CoreJS.StringParameter(ServerParameter.Protocol, 'http | https | empty', ''));
+        config.add(new CoreJS.StringParameter(ServerParameter.Host, 'of server', 'localhost'));
+        config.add(new CoreJS.NumberParameter(ServerParameter.Port, 'of server', 4431));
+        config.add(new CoreJS.StringParameter(ServerParameter.Key, 'path to ssl key file', 'key.pem'));
+        config.add(new CoreJS.StringParameter(ServerParameter.Cert, 'path to ssl certification file', 'cert.pem'));
+        config.add(new CoreJS.ArrayParameter(ServerParameter.AllowedRequestHeaders, 'allowed server request headers', new CoreJS.StringParameter('', ''), []));
+        config.add(new CoreJS.ArrayParameter(ServerParameter.AllowedOrigins, 'allowed server origins', new CoreJS.StringParameter('', ''), []));
+        config.add(new CoreJS.DictionaryParameter(ServerParameter.ResponseHeaders, 'additional server response headers', [], {}));
     }
 
     public get isRunning(): boolean { return !!this._stopAction; }
     public get debug(): boolean { return this.app.debug; }
     public get endpoint(): string { return this._endpoint; }
-    public get protocol(): string { return this.config.get(Server.PARAMETER_PROTOCOL); }
+    public get protocol(): string { return this.config.get(ServerParameter.Protocol); }
 
     public start(): Promise<void> {
         if (this.isRunning) throw new Error('server is running already');
@@ -83,17 +71,17 @@ export class Server {
                 break;
 
             case Protocol.HTTPS:
-                if (!this.config.has(Server.PARAMETER_KEY))
-                    throw new Error(`missing config parameter '${Server.PARAMETER_KEY}'`);
+                if (!this.config.has(ServerParameter.Key))
+                    throw new Error(`missing config parameter '${ServerParameter.Key}'`);
 
-                if (!FS.existsSync(this.config.get(Server.PARAMETER_KEY)))
-                    throw new Error(`ssl key at '${this.config.get(Server.PARAMETER_KEY)}' does not exist`);
+                if (!FS.existsSync(this.config.get(ServerParameter.Key)))
+                    throw new Error(`ssl key at '${this.config.get(ServerParameter.Key)}' does not exist`);
 
-                if (!this.config.has(Server.PARAMETER_CERT))
-                    throw new Error(`missing config parameter '${Server.PARAMETER_CERT}'`);
+                if (!this.config.has(ServerParameter.Cert))
+                    throw new Error(`missing config parameter '${ServerParameter.Cert}'`);
 
-                if (!FS.existsSync(this.config.get(Server.PARAMETER_CERT)))
-                    throw new Error(`ssl certificate at '${this.config.get(Server.PARAMETER_CERT)}' does not exist`);
+                if (!FS.existsSync(this.config.get(ServerParameter.Cert)))
+                    throw new Error(`ssl certificate at '${this.config.get(ServerParameter.Cert)}' does not exist`);
                 break;
 
             default:
@@ -101,20 +89,32 @@ export class Server {
                 return Promise.resolve();
         }
 
-        const host = this.config.get<string>(Server.PARAMETER_HOST);
-        const port = this.config.get<number>(Server.PARAMETER_PORT);
+        const defaultResponseHeaders = Object.assign({}, this.config.get(ServerParameter.ResponseHeaders));
+
+        const host = this.config.get<string>(ServerParameter.Host);
+        const port = this.config.get<number>(ServerParameter.Port);
 
         const server = protocol == Protocol.HTTP
             ? HTTP.createServer((request, response) => this.onRequest(request, response))
             : HTTPS.createServer({
-                key: FS.readFileSync(this.config.get(Server.PARAMETER_KEY)),
-                cert: FS.readFileSync(this.config.get(Server.PARAMETER_CERT))
+                key: FS.readFileSync(this.config.get(ServerParameter.Key)),
+                cert: FS.readFileSync(this.config.get(ServerParameter.Cert))
             }, (request, response) => this.onRequest(request, response));
 
         server.on('error', error => this.onError.emit(this, error));
         server.listen({ host, port });
 
         this._endpoint = `${protocol}://${host}:${port}/`;
+
+        this._responseHeaders = defaultResponseHeaders;
+        this._allowedRequestHeaders = this.config.get<string[]>(ServerParameter.AllowedRequestHeaders);
+        this._allowedOrigins = this.config.get<string[]>(ServerParameter.AllowedOrigins)
+
+        if (0 == this._allowedOrigins.length)
+            this._allowedOrigins = ['*'];
+
+        defaultResponseHeaders[CoreJS.ResponseHeader.AllowHeaders] = this._allowedRequestHeaders.join(',');
+        defaultResponseHeaders[CoreJS.ResponseHeader.AllowOrigin] = this._allowedOrigins.join(',');
 
         this._textInfoResponse = new CoreJS.TextResponse(this.toString());
         this._htmlInfoResponse = new CoreJS.HTMLResponse(this.toHTML());
