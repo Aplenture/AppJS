@@ -46,7 +46,7 @@ export class Server {
         public readonly app: App,
         public readonly config: CoreJS.Config
     ) {
-        config.add(new CoreJS.StringParameter(ServerParameter.Protocol, 'http | https | empty', ''));
+        config.add(new CoreJS.StringParameter(ServerParameter.Protocol, 'http | https | empty', 'http'));
         config.add(new CoreJS.StringParameter(ServerParameter.Host, 'of server', 'localhost'));
         config.add(new CoreJS.NumberParameter(ServerParameter.Port, 'of server', 4431));
         config.add(new CoreJS.StringParameter(ServerParameter.Key, 'path to ssl key file', 'key.pem'));

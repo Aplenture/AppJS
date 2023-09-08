@@ -30,7 +30,7 @@ config.onChange.on((key, config) => {
     const filepath = Path.Logs + config.get<string>(key);
 
     if (log)
-        log.write(`switch log file to '${filepath}'`)
+        log.write(`switch to log file '${filepath}'`)
 
     log = BackendJS.Log.Log.createFileLog(filepath);
 }, { args: Paramter.Logfile });
