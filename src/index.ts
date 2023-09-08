@@ -9,7 +9,8 @@ import * as BackendJS from "backendjs";
 import * as CoreJS from "corejs";
 import * as FS from "fs";
 import * as Readline from "readline";
-import { App, AppParameter, Server } from "./core";
+import * as HTTP from "http";
+import { App, AppParameter, RouteData, Server, ServerParameter } from "./core";
 
 enum Paramter {
     Logfile = 'logfile'
@@ -20,6 +21,8 @@ enum Path {
     Scripts = 'scripts/',
     Logs = 'logs/'
 }
+
+const PREFIX_APP_ROUTE = 'app.';
 
 const config = new CoreJS.Config();
 
@@ -43,7 +46,74 @@ process.on('uncaughtException', error => log.error(error));
 process.on('unhandledRejection', reason => log.error(reason instanceof Error ? reason : reason ? new Error(reason.toString()) : new Error()));
 
 // listen to config changes before adding app and server parameters
-config.onChange.on((key, config) => log.write(`debug mode changed to '${config.get(key)}'`), { args: BackendJS.Module.GlobalParamterName.Debug });
+config.onChange.on(key => log.write(`debug mode changed to '${config.get(key)}'`), { args: BackendJS.Module.GlobalParamterName.Debug });
+config.onChange.on(() => {
+    const routes: NodeJS.ReadOnlyDict<RouteData> = config.get(AppParameter.Routes) || {};
+    const oldAppCommands = Object.keys(commander.commands)
+        .filter(command => 0 == command.indexOf(PREFIX_APP_ROUTE));
+
+    commander.remove(...oldAppCommands);
+
+    // create commands by routes
+    // execute command by server
+    // if server is not execute start and retry to execute the command
+    commander.set(...Object.keys(routes).map(route => ({
+        name: PREFIX_APP_ROUTE + route,
+        description: routes[route].description,
+        execute: args => new Promise<string>((resolve, reject) => {
+            const params = CoreJS.URLArgsToString(args);
+            const path = params
+                ? `/${route}?${params}`
+                : `/${route}`;
+
+            const request = HTTP.request({
+                host: config.get(ServerParameter.Host),
+                port: config.get(ServerParameter.Port),
+                path,
+                method: 'GET'
+            }, response => {
+                let data = '';
+
+                response.on('error', reject);
+                response.on('data', chunk => data += chunk);
+                response.on('close', () => {
+                    switch (response.statusCode) {
+                        case CoreJS.ResponseCode.OK:
+                            resolve(data.toString());
+                            break;
+
+                        case CoreJS.ResponseCode.NoContent:
+                            resolve('done\n');
+                            break;
+
+                        default:
+                            resolve(`Error ${response.statusCode}: ${data.toString()}\n`);
+                            break;
+                    }
+                });
+            });
+
+            request.on('error', (error: any) => {
+                switch (error.errno) {
+                    // server is not running
+                    case -111: //ECONNREFUSED
+                        commander.execute('start')
+                            .then(() => commander.execute(PREFIX_APP_ROUTE + route, args))
+                            .then(resolve)
+                            .catch(reject)
+                            .then(() => commander.execute('stop'));
+                        break;
+
+                    default:
+                        reject(error);
+                        break;
+                }
+            });
+
+            request.end();
+        })
+    })));
+}, { args: null });
 
 const app = new App(config);
 const server = new Server(app, config);
@@ -77,7 +147,7 @@ commander.set({
         config.deserialize(args);
 
         // remove all previous app routes from commander
-        commander.remove(...Object.keys(app.routes).map(route => 'app.' + route));
+        commander.remove(...Object.keys(app.routes).map(route => PREFIX_APP_ROUTE + route));
 
         await app.deinit();
         await app.init();
@@ -87,17 +157,19 @@ commander.set({
             const data = app.routes[route];
 
             return {
-                name: 'app.' + route,
+                name: PREFIX_APP_ROUTE + route,
                 description: data.description,
                 parameters: data.parameters,
                 execute: async args => app.execute(route, args).then(result => {
                     switch (result.code) {
                         case CoreJS.ResponseCode.OK:
-                        case CoreJS.ResponseCode.NoContent:
                             return result.data;
 
+                        case CoreJS.ResponseCode.NoContent:
+                            return 'done\n';
+
                         default:
-                            throw new CoreJS.CoreError(result.code, result.data);
+                            return `Error ${result.code}: ${result.data.toString()}`;
                     }
                 })
             }

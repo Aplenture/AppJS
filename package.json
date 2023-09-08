@@ -16,9 +16,9 @@
         "script": "node dist/index script",
         "start": "node dist/index script --path start.txt",
         "clear": "node dist/index script --path clear.txt",
-        "update": "node dist/index script --path update.txt",
-        "reset": "node dist/index script --path reset.txt",
-        "revert": "node dist/index script --path revert.txt"
+        "update": "node dist/index app.update",
+        "reset": "node dist/index app.reset",
+        "revert": "node dist/index app.revert"
     },
     "repository": {
         "type": "git",
