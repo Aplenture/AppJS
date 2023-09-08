@@ -21,100 +21,12 @@ export enum AppParameter {
     Routes = 'routes'
 }
 
-const DEFAULT_MODULES: ModuleData[] = [{
-    class: "Module",
-    path: "./node_modules/backendjs/dist/account/core/module",
-    options: {
-        name: "account",
-        databaseConfig: {
-            host: "localhost",
-            user: "dev",
-            password: "",
-            database: "my_app_database"
-        }
-    }
-}];
-
-const DEFAULT_ROUTES: NodeJS.ReadOnlyDict<RouteData> = {
-    update: {
-        description: "updates all modules",
-        paths: [
-            "account update"
-        ]
-    },
-    reset: {
-        description: "resets all modules",
-        paths: [
-            "account reset"
-        ]
-    },
-    revert: {
-        description: "reverts all modules",
-        paths: [
-            "account revert"
-        ]
-    },
-    hasaccess: {
-        description: "checks whether access is valid",
-        paths: [
-            "account hasaccess"
-        ]
-    },
-    createAccount: {
-        description: "creates a new account",
-        paths: [
-            "account createAccount"
-        ]
-    },
-    login: {
-        description: "account login",
-        paths: [
-            "account login"
-        ]
-    },
-    logout: {
-        description: "account logout",
-        paths: [
-            "account validate --rights 1",
-            "account logout"
-        ]
-    },
-    changePassword: {
-        description: "changes the password from the account",
-        paths: [
-            "account validate --rights 1",
-            "account changePassword"
-        ]
-    },
-    getAccesses: {
-        description: "returns all open accesses from the account",
-        paths: [
-            "account validate --rights 1",
-            "account getAccesses"
-        ]
-    },
-    createAccess: {
-        description: "creates a new access",
-        paths: [
-            "account validate --rights 1",
-            "account createAccess"
-        ]
-    },
-    deleteAccess: {
-        description: "deletes an existing access",
-        paths: [
-            "account validate --rights 1",
-            "account deleteAccess"
-        ]
-    }
-};
-
-interface RouteData {
+export interface RouteData {
     readonly description?: string;
     readonly paths: readonly string[];
 }
 
-interface Route {
+export interface Route {
     readonly description: string;
     readonly parameters: CoreJS.ParameterList;
     readonly paths: readonly {
@@ -150,9 +62,9 @@ export class App {
             new CoreJS.StringParameter(AppParameter.Class, 'class name of the module'),
             new CoreJS.StringParameter(AppParameter.Path, 'to the module class'),
             new CoreJS.DictionaryParameter(AppParameter.Options, 'from the module', [], {})
-        ]), DEFAULT_MODULES));
+        ]), []));
 
-        config.add(new CoreJS.DictionaryParameter(AppParameter.Routes, 'all executable routes', undefined, DEFAULT_ROUTES));
+        config.add(new CoreJS.DictionaryParameter(AppParameter.Routes, 'all executable routes', undefined, {}));
 
         this.onDebugChanged(this.debug);
     }
