@@ -21,14 +21,20 @@ export enum AppParameter {
     Routes = 'routes'
 }
 
+export interface RouteOptions {
+    readonly broadcast?: boolean;
+}
+
 export interface RouteData {
     readonly description?: string;
+    readonly options: RouteOptions;
     readonly paths: readonly string[];
 }
 
 export interface Route {
     readonly description: string;
     readonly parameters: CoreJS.ParameterList;
+    readonly options: RouteOptions;
     readonly paths: readonly {
         readonly module: BackendJS.Module.Module<any, any, any>;
         readonly command: string;
@@ -119,6 +125,7 @@ export class App {
                 throw new Error(`route '${name}' needs to have at least one path`);
 
             const description = data.description || '';
+            const options = data.options || {};
             const parameters = [];
             const routeArgs = [];
 
@@ -175,6 +182,7 @@ export class App {
 
             this._routes[name.toLowerCase()] = {
                 description,
+                options,
                 parameters: new CoreJS.ParameterList(...parameters),
                 paths
             };
@@ -215,8 +223,12 @@ export class App {
 
                 // execute route commands until any command returns a reponse
                 if (r = await d.module.execute(d.command, args))
-                    return r;
+                    // if broadcasting continue execution
+                    if (!routeData.options.broadcast)
+                        return r;
             }
+
+            return CoreJS.RESPONSE_OK;
         } catch (error) {
             this.onError.emit(this, error);
 
