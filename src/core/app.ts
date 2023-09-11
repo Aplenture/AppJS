@@ -213,6 +213,8 @@ export class App {
             return this._invalidRouteResponse;
 
         try {
+            let result = CoreJS.RESPONSE_OK;
+
             // parse args by all route command params
             // to prevent securtiy leaks
             args = routeData.parameters.parse(args, {}, true);
@@ -221,14 +223,38 @@ export class App {
                 // parse args by route path args
                 Object.assign(args, d.args);
 
-                // execute route commands until any command returns a reponse
-                if (r = await d.module.execute(d.command, args))
-                    // if broadcasting continue execution
-                    if (!routeData.options.broadcast)
-                        return r;
+                // execute current module
+                r = await d.module.execute(d.command, args);
+
+                // if no result
+                // continue executing next modules
+                if (!r)
+                    continue;
+
+                // update result by current module
+                result = r;
+
+                // on error response
+                // cancel execution cycle
+                switch (result.code) {
+                    case CoreJS.ResponseCode.OK:
+                    case CoreJS.ResponseCode.NoContent:
+                        break;
+
+                    default:
+                        return result;
+
+                }
+
+                // if broadcasting
+                // continue executing next modules
+                if (routeData.options.broadcast)
+                    continue;
+
+                return result;
             }
 
-            return CoreJS.RESPONSE_OK;
+            return result;
         } catch (error) {
             this.onError.emit(this, error);
 
