@@ -44,7 +44,7 @@ export interface Route {
 
 type ModuleData = BackendJS.LoadModuleConfig & { readonly options?: any; };
 
-export class App {
+export class App implements BackendJS.Module.IApp {
     public readonly onMessage = new CoreJS.Event<App, string>('App.onMessage');
     public readonly onError = new CoreJS.Event<App, Error>('App.onError');
 
@@ -94,11 +94,7 @@ export class App {
         this._routes = {};
         this._modules = this.config.get<readonly ModuleData[]>(AppParameter.Modules).map(data => {
             try {
-                const module = BackendJS.loadModule<BackendJS.Module.Module<any, any, any>>(data, args, data.options);
-
-                module.onMessage.on((message, sender) => this.onMessage.emit(this, `${sender.name} module - ${message}`));
-
-                return module;
+                return BackendJS.loadModule<BackendJS.Module.Module<any, any, any>>(data, this, args, data.options);
             } catch (error) {
                 const coreError = CoreJS.CoreError.parseFromError<any>(error);
 
