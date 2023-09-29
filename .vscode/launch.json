@@ -12,7 +12,8 @@
             "console": "integratedTerminal",
             "preLaunchTask": "build",
             "args": [
-                "start",
+                "script",
+                "--path start.txt",
                 "--debug"
             ],
             "outFiles": [
