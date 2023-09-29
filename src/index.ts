@@ -220,6 +220,9 @@ commander.set({
         scriptSpace = 3;
 
         for await (const line of readline) {
+            if (!line)
+                continue;
+
             result += '\n' + space + '>> ' + line + '\n';
             result += ('<< ' + await commander.executeLine(line)).replace(/^(.)/gm, space + '$1') + '\n';
         }
