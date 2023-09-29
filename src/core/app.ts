@@ -211,9 +211,9 @@ export class App implements BackendJS.Module.IApp {
         try {
             let result = CoreJS.RESPONSE_OK;
 
-            // parse args by all route command params
+            // filter args by all route command params
             // to prevent securtiy leaks
-            args = routeData.parameters.parse(args, {}, true);
+            args = routeData.parameters.filter(args, {});
 
             for (let i = 0, d = routeData.paths[i], r: CoreJS.Response | void; i < routeData.paths.length; ++i, d = routeData.paths[i]) {
                 // parse args by route path args
