@@ -118,8 +118,8 @@ config.onChange.on(() => {
 const app = new App(config);
 const server = new Server(app, config);
 
-app.onMessage.on(message => log.write(message, 'App'));
-app.onError.on(error => log.error(error, 'App'));
+app.onMessage.on((message, sender) => log.write(message, `${sender.name} (${sender.constructor.name})`));
+app.onError.on((error, sender) => log.error(error, `${sender.name} (${sender.constructor.name})`));
 
 server.onMessage.on(message => log.write(message, 'Server'));
 server.onError.on(error => log.error(error, 'Server'));
@@ -133,7 +133,7 @@ config.set(AppParameter.Version, infos.version);
 
 const commander = new CoreJS.Commander();
 
-CoreJS.GlobalEventManager .onMessage.on(message => log.write(message, 'Commander'));
+// CoreJS.GlobalEventManager.onMessage.on(message => log.write(message, 'Commander'));
 
 process.on('SIGINT', () => commander.execute('stop'));
 process.on('SIGUSR1', () => commander.execute('stop'));
