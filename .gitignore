@@ -6,6 +6,7 @@ setup/
 .DS_Store
 
 *.log
+*.pem
 
 scripts/*
 configs/*
