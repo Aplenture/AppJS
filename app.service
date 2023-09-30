@@ -3,8 +3,8 @@ Description=<description>
 After=network.target
 
 [Service]
-WorkingDirectory=/home/<user>/<app_name>
-ExecStart=/usr/bin/npm start -- start
+WorkingDirectory=/home/<user>/AppJS
+ExecStart=/usr/bin/npm start
 Restart=on-failure
 User=<user>
 
