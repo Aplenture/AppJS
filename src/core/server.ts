@@ -12,6 +12,7 @@ import * as HTTPS from "https";
 import { App } from "./app";
 
 export enum ServerParameter {
+    Endpoint = 'endpoint',
     Protocol = 'protocol',
     Port = 'port',
     Host = 'host',
@@ -46,6 +47,7 @@ export class Server {
         public readonly app: App,
         public readonly config: CoreJS.Config
     ) {
+        config.add(new CoreJS.StringParameter(ServerParameter.Endpoint, 'server endpoint', null));
         config.add(new CoreJS.StringParameter(ServerParameter.Protocol, 'http | https | empty', 'http'));
         config.add(new CoreJS.StringParameter(ServerParameter.Host, 'of server', 'localhost'));
         config.add(new CoreJS.NumberParameter(ServerParameter.Port, 'of server', 4431));
@@ -104,7 +106,7 @@ export class Server {
         server.on('error', error => this.onError.emit(this, error));
         server.listen({ host, port });
 
-        this._endpoint = `${protocol}://${host}:${port}/`;
+        this._endpoint = this.config.get(ServerParameter.Endpoint) ?? `${protocol}://${host}:${port}/`;
 
         this._responseHeaders = defaultResponseHeaders;
         this._allowedRequestHeaders = this.config.get<string[]>(ServerParameter.AllowedRequestHeaders);
