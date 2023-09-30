@@ -215,13 +215,20 @@ commander.set({
 
         const space = " ".repeat(scriptSpace);
 
+        const replaces = Object.keys(args)
+            .filter(key => key[0] == '_' && key[key.length - 1] == '_')
+            .map(key => [new RegExp(key, 'g'), args[key]]);
+
         let result = `executing script ${path}...`;
+        let line: string;
 
         scriptSpace = 3;
 
-        for await (const line of readline) {
+        for await (line of readline) {
             if (!line)
                 continue;
+
+            replaces.forEach(replace => line = line.replace(replace[0], replace[1]));
 
             result += '\n' + space + '>> ' + line + '\n';
             result += ('<< ' + await commander.executeLine(line)).replace(/^(.)/gm, space + '$1') + '\n';
