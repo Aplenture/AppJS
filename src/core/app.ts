@@ -48,6 +48,8 @@ export class App implements BackendJS.Module.IApp {
     public readonly onMessage = new CoreJS.Event<App, string>('App.onMessage');
     public readonly onError = new CoreJS.Event<App, Error>('App.onError');
 
+    public readonly updateLoop = new CoreJS.Updateloop('update loop', this, CoreJS.Milliseconds.Minute);
+
     private _initialized = false;
     private _modules: readonly BackendJS.Module.Module<any, any, any>[] = [];
     private _routes: NodeJS.Dict<Route> = {};

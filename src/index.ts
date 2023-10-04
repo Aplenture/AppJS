@@ -133,8 +133,6 @@ config.set(AppParameter.Version, infos.version);
 
 const commander = new CoreJS.Commander();
 
-// CoreJS.GlobalEventManager.onMessage.on(message => log.write(message, 'Commander'));
-
 process.on('SIGINT', () => commander.execute('stop'));
 process.on('SIGUSR1', () => commander.execute('stop'));
 process.on('SIGUSR2', () => commander.execute('stop'));
