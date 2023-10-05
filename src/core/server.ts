@@ -198,8 +198,12 @@ export class Server {
             result += this._allowedRequestHeaders.join('</br>');
         }
 
+        const endpointWithoutSlash = '/' == this.endpoint[this.endpoint.length - 1]
+            ? this.endpoint.substring(0, this.endpoint.length - 1)
+            : this.endpoint;
+
         result += '<h3>Routes</h3>';
-        result += Object.values(appData.routes).map(route => `<h4><a href="${this.endpoint}/${route.path}">/${route.path}</a></h4><p>${route.description}</p><table><tr><th colspan=5>Parameters</th><tr><th>Name</th><th>Type</th><th>Description</th><th>Optional</th><th>Default</th></tr>${Object.values(route.parameters).map(param => `<tr><td><b>${param.name}</b></td><td>${param.type}</td><td>${param.description}</td><td>${param.optional}</td><td>${param.optional ? param.def : ''}</td></tr>`).join('')}</table>`).join('');
+        result += Object.values(appData.routes).map(route => `<h4><a href="${endpointWithoutSlash}/${route.path}">/${route.path}</a></h4><p>${route.description}</p><table><tr><th colspan=5>Parameters</th><tr><th>Name</th><th>Type</th><th>Description</th><th>Optional</th><th>Default</th></tr>${Object.values(route.parameters).map(param => `<tr><td><b>${param.name}</b></td><td>${param.type}</td><td>${param.description}</td><td>${param.optional}</td><td>${param.optional ? param.def : ''}</td></tr>`).join('')}</table>`).join('');
 
         return result;
     }
