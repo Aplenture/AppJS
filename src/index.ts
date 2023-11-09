@@ -213,8 +213,14 @@ commander.set({
 
         const space = " ".repeat(scriptSpace);
 
-        const replaces = Object.keys(args)
-            .filter(key => key[0] == '_' && key[key.length - 1] == '_')
+        const aliases = Object.keys(args)
+            .filter(key => key[0] == '_' && key[key.length - 1] == '_');
+
+        const appending = ' ' + aliases
+            .map(key => `--${key} ${args[key]}`)
+            .join(' ');
+
+        const replaces = aliases
             .map(key => [new RegExp(key, 'g'), args[key]]);
 
         let result = `executing script ${path}...`;
@@ -227,6 +233,8 @@ commander.set({
                 continue;
 
             replaces.forEach(replace => line = line.replace(replace[0], replace[1]));
+
+            line += appending;
 
             result += '\n' + space + '>> ' + line + '\n';
             result += ('<< ' + await commander.executeLine(line)).replace(/^(.)/gm, space + '$1') + '\n';
